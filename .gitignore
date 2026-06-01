@@ -1,0 +1,14 @@
+# Downloads (must stay local)
+/Tweets/
+/Instagram/
+
+# Secrets / auth
+/cookies.txt
+/instagram_cookies.txt
+
+# Logs
+*.log
+
+# Python caches
+__pycache__/
+*.pyc

@@ -1,0 +1,9 @@
+{
+    "extractor": {
+        "base-directory": "./Instagram",
+        "archive": "./Instagram/archive.sqlite3"
+    },
+    "downloader": {
+        "filesize-max": "500m"
+    }
+}

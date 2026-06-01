@@ -1,0 +1,32 @@
+{
+  "extractor": {
+    "base-directory": "./Tweets",
+    "archive": "./Tweets/archive.sqlite3",
+    "twitter": {
+      "include": "media",
+      "download": true,
+      "text-tweets": false,
+      "retweets": true,
+      "replies": false,
+      "quoted": true,
+      "unique": true,
+      "directory": [
+        "{author[name]}"
+      ],
+      "filename": "{tweet_id}_{date!D:%Y%m%d_%H%M%S}_{num}_{filename}.{extension}"
+    }
+  },
+  "downloader": {
+    "filesize-max": "200m"
+  },
+  "postprocessors": [
+    {
+      "name": "metadata",
+      "event": "post",
+      "mode": "custom",
+      "filename": "{author[name]}_tweets.html",
+      "open": "a",
+      "content-format": "<h2>ID: {tweet_id}</h2>\n<hr>\n<h3>{content}</h3>\n<p>Username: {author[name]}</p>\n<p>Date: {date}</p>\n<br><br>"
+    }
+  ]
+}
