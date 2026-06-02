@@ -1,0 +1,24 @@
+{
+  "name": "gallery-dl",
+  "version": "1.0.0",
+  "description": "This repo is a small, focused wrapper around **gallery-dl** for downloading media directly from websites (Twitter/X included).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CoffeePatch/Gallery-Dl.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/CoffeePatch/Gallery-Dl/issues"
+  },
+  "homepage": "https://github.com/CoffeePatch/Gallery-Dl#readme",
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

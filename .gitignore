@@ -1,14 +1,21 @@
-# Downloads (must stay local)
-/Tweets/
-/Instagram/
-
-# Secrets / auth
-/cookies.txt
-/instagram_cookies.txt
-
-# Logs
-*.log
-
-# Python caches
+# Dependencies
+node_modules/
 __pycache__/
 *.pyc
+
+# Local Data and Outputs
+/Tweets/
+/Instagram/
+/Checks/
+results.csv
+*.log
+
+# Secrets / Auth / Session Data
+auth.json
+cookies.txt
+instagram_cookies.txt
+
+# Target Lists
+users.txt
+instagram_users.txt
+accounts.txt

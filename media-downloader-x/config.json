@@ -7,7 +7,7 @@
       "download": true,
       "text-tweets": false,
       "retweets": true,
-      "replies": false,
+      "replies": true,
       "quoted": true,
       "unique": true,
       "directory": [
@@ -26,7 +26,7 @@
       "mode": "custom",
       "filename": "{author[name]}_tweets.html",
       "open": "a",
-      "content-format": "<h2>ID: {tweet_id}</h2>\n<hr>\n<h3>{content}</h3>\n<p>Username: {author[name]}</p>\n<p>Date: {date}</p>\n<br><br>"
+      "content-format": "<article>\n<h2><a href=\"https://x.com/{author[name]}/status/{tweet_id}\">Tweet {tweet_id}</a></h2>\n<p>User: {author[name]} | Date: {date} | Type: {type} | File: {tweet_id}_{date!D:%Y%m%d_%H%M%S}_{num}_{filename}.{extension}</p>\n<pre>{content}</pre>\n<hr>\n</article>\n"
     }
   ]
 }
