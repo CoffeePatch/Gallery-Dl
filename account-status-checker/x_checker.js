@@ -226,21 +226,31 @@ async function doCheck() {
         process.exit(1);
     }
 
-    // Initialize CSV and check for existing completed handles
+    // Initialize CSV and clean existing data (remove duplicates)
     let completedHandles = new Set();
     if (!fs.existsSync(OUTPUT_FILE)) {
         fs.writeFileSync(OUTPUT_FILE, 'Handle,Status,Post Count,Timestamp\n');
     } else {
         const existingCsv = fs.readFileSync(OUTPUT_FILE, 'utf8').split('\n');
-        // skip header row
+        const header = existingCsv[0];
+        const rowMap = new Map();
+        
         for (let i = 1; i < existingCsv.length; i++) {
             const line = existingCsv[i].trim();
             if (!line) continue;
-            // Simple split: handle is always before the first comma
+            const handle = line.split(',')[0];
+            rowMap.set(handle, line); // Overwrites older entries with newer ones
+        }
+
+        // Rewrite CSV cleanly without duplicates
+        const cleanLines = [header, ...Array.from(rowMap.values())];
+        fs.writeFileSync(OUTPUT_FILE, cleanLines.join('\n') + '\n');
+
+        // Build completed handles list from the cleaned data
+        for (const line of rowMap.values()) {
             const handle = line.split(',')[0];
             const status = line.split(',')[1];
             
-            // If the script logged a network error, we WANT to retry it.
             // If it logged any valid status (Active, Suspended, etc), skip it.
             if (status && !status.includes('Timeout/Network Error') && !status.includes('Error')) {
                 completedHandles.add(handle);
