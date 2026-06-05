@@ -1,7 +1,5 @@
 {
     "extractor": {
-        "base-directory": "./TwitterArchive",
-        "archive": "./TwitterArchive/archive.sqlite3",
         "twitter": {
             "conversations": true,
             "expand": true,
@@ -14,8 +12,7 @@
                     "filename": "{author[name]}_master_index.md",
                     "open": "a",
                     "mode": "custom",
-                    "format": "### 🐦 Tweet ID: `{tweet_id}`\n**Date:** {date}\n\n{content}\n\n📁 **Media File:** `{filename}.{extension}`\n\n---\n\n",
-                    "enabled": "write_text"
+                    "format": "### 🐦 Tweet ID: `{tweet_id}`\n**Date:** {date}\n\n{content}\n\n📁 **Media File:** `{filename}.{extension}`\n\n---\n\n"
                 }
             ]
         }

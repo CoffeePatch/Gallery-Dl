@@ -9,6 +9,11 @@ $UsersFile = Join-Path $RootFolder "users.txt"
 $ConfigFile = Join-Path $ScriptDir "config.json"
 $CookiesFile = Join-Path $RootFolder "cookies.txt"
 
+# Force absolute output paths to prevent split archives
+$BaseOutputDir = Join-Path $RootFolder "TwitterArchive"
+$BaseOutputDirGdl = $BaseOutputDir -replace '\\', '/'
+$ArchiveFileGdl = (Join-Path $BaseOutputDir "archive.sqlite3") -replace '\\', '/'
+
 if (-not (Test-Path $UsersFile)) {
     Write-Error "Error: users.txt file not found in the root directory!"
     exit 1
@@ -18,8 +23,8 @@ if (-not (Test-Path $UsersFile)) {
 $Accounts = Get-Content $UsersFile | Where-Object { $_.Trim() -ne "" }
 
 foreach ($Account in $Accounts) {
-    # Normalize URL/Handle to base profile link
-    $CleanHandle = $Account -replace "https://(twitter|x).com/", "" -replace "/media/?", "" -replace "@", ""
+    # Robust URL cleanup (Handles www., http, query parameters, and trailing tags)
+    $CleanHandle = $Account -replace "^(?:https?://)?(?:www\.)?(?:twitter|x)\.com/", "" -replace "\?.*$", "" -replace "/media/?$", "" -replace "^@", ""
     $TargetURL = "https://x.com/$CleanHandle"
     
     Write-Host "--------------------------------------------------" -ForegroundColor Cyan
@@ -34,7 +39,9 @@ foreach ($Account in $Accounts) {
     # 3. Build Dynamic Gallery-dl Command arguments
     $Args = @(
         "--config", $ConfigFile,
-        "--sleep-request", "1"
+        "--sleep-request", "1",
+        "-o", "extractor.base-directory=$BaseOutputDirGdl",
+        "-o", "extractor.archive=$ArchiveFileGdl"
     )
 
     # 4. Cookie Authentication Logic
@@ -46,11 +53,10 @@ foreach ($Account in $Accounts) {
         $Args += @("--cookies-from-browser", "edge")
     }
 
-    # 5. Toggle post-processing conditionally 
-    if ($ExtractText) {
-        $Args += @("-o", "twitter.postprocessors.metadata.enabled=true")
-    } else {
-        $Args += @("-o", "twitter.postprocessors.metadata.enabled=false")
+    # 5. Toggle post-processing cleanly
+    if (-not $ExtractText) {
+        # Nullify the postprocessors array entirely if text extraction is OFF
+        $Args += @("-o", "extractor.twitter.postprocessors=[]")
     }
 
     # Append Target Profile
