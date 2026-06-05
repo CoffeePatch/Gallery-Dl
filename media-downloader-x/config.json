@@ -1,32 +1,21 @@
 {
-  "extractor": {
-    "base-directory": "./Tweets",
-    "archive": "./Tweets/archive.sqlite3",
-    "twitter": {
-      "include": "media",
-      "download": true,
-      "text-tweets": false,
-      "retweets": true,
-      "replies": true,
-      "quoted": true,
-      "unique": true,
-      "directory": [
-        "{author[name]}"
-      ],
-      "filename": "{tweet_id}_{date!D:%Y%m%d_%H%M%S}_{num}_{filename}.{extension}"
+    "extractor": {
+        "twitter": {
+            "conversations": true,
+            "expand": true,
+            "directory": ["TwitterArchive", "{author[name]}"],
+            "filename": "{tweet_id}_{id}.{extension}",
+            "postprocessors": [
+                {
+                    "name": "metadata",
+                    "event": "post",
+                    "filename": "{author[name]}_master_index.md",
+                    "open": "a",
+                    "mode": "custom",
+                    "format": "### 🐦 Tweet ID: `{tweet_id}`\n**Date:** {date}\n\n{content}\n\n📁 **Media File:** `{filename}.{extension}`\n\n---\n\n",
+                    "enabled": "write_text"
+                }
+            ]
+        }
     }
-  },
-  "downloader": {
-    "filesize-max": "200m"
-  },
-  "postprocessors": [
-    {
-      "name": "metadata",
-      "event": "post",
-      "mode": "custom",
-      "filename": "{author[name]}_tweets.html",
-      "open": "a",
-      "content-format": "<article>\n<h2><a href=\"https://x.com/{author[name]}/status/{tweet_id}\">Tweet {tweet_id}</a></h2>\n<p>User: {author[name]} | Date: {date} | Type: {type} | File: {tweet_id}_{date!D:%Y%m%d_%H%M%S}_{num}_{filename}.{extension}</p>\n<pre>{content}</pre>\n<hr>\n</article>\n"
-    }
-  ]
 }
