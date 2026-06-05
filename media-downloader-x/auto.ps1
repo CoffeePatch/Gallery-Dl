@@ -2,12 +2,15 @@ param (
     [switch]$ExtractText = $false
 )
 
-# 1. Path Setup
-$UsersFile = "./users.txt"
-$ConfigFile = "./config.json"
+# 1. Absolute Path Setup
+$ScriptDir = $PSScriptRoot
+$RootFolder = Join-Path $ScriptDir ".."
+$UsersFile = Join-Path $RootFolder "users.txt"
+$ConfigFile = Join-Path $ScriptDir "config.json"
+$CookiesFile = Join-Path $RootFolder "cookies.txt"
 
 if (-not (Test-Path $UsersFile)) {
-    Write-Error "Error: users.txt file not found!"
+    Write-Error "Error: users.txt file not found in the root directory!"
     exit 1
 }
 
@@ -15,7 +18,7 @@ if (-not (Test-Path $UsersFile)) {
 $Accounts = Get-Content $UsersFile | Where-Object { $_.Trim() -ne "" }
 
 foreach ($Account in $Accounts) {
-    # Normalize URL/Handle to base profile link, removing any trailing '/media'
+    # Normalize URL/Handle to base profile link
     $CleanHandle = $Account -replace "https://(twitter|x).com/", "" -replace "/media/?", "" -replace "@", ""
     $TargetURL = "https://x.com/$CleanHandle"
     
@@ -30,11 +33,20 @@ foreach ($Account in $Accounts) {
 
     # 3. Build Dynamic Gallery-dl Command arguments
     $Args = @(
-        "--cookies-from-browser", "edge",
-        "--config", $ConfigFile
+        "--config", $ConfigFile,
+        "--sleep-request", "1"
     )
 
-    # Toggle post-processing conditionally 
+    # 4. Cookie Authentication Logic
+    if (Test-Path $CookiesFile) {
+        Write-Host "Auth: Using root cookies.txt file." -ForegroundColor DarkGray
+        $Args += @("--cookies", $CookiesFile)
+    } else {
+        Write-Host "Auth: cookies.txt not found. Falling back to default Edge profile." -ForegroundColor DarkYellow
+        $Args += @("--cookies-from-browser", "edge")
+    }
+
+    # 5. Toggle post-processing conditionally 
     if ($ExtractText) {
         $Args += @("-o", "twitter.postprocessors.metadata.enabled=true")
     } else {

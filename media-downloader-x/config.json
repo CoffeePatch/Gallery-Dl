@@ -1,9 +1,11 @@
 {
     "extractor": {
+        "base-directory": "./TwitterArchive",
+        "archive": "./TwitterArchive/archive.sqlite3",
         "twitter": {
             "conversations": true,
             "expand": true,
-            "directory": ["TwitterArchive", "{author[name]}"],
+            "directory": ["{author[name]}"],
             "filename": "{tweet_id}_{id}.{extension}",
             "postprocessors": [
                 {
