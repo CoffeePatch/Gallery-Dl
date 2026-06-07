@@ -1,0 +1,29 @@
+{
+    "extractor": {
+        "twitter": {
+            "retweets": true,
+            "text-tweets": true,
+            "replies": false,
+            "conversations": false,
+            "expand": false,
+            "quoted": false,
+            "pinned": true,
+            "unique": true,
+            "videos": true,
+            "sleep-request": "3.0-6.0",
+            "directory": ["{user[name]}"],
+            "filename": "{tweet_id}_{num}.{extension}",
+            "postprocessors": [
+                {
+                    "name": "metadata",
+                    "event": "post",
+                    "filename": "{user[name]}_master_index.md",
+                    "open": "a",
+                    "mode": "custom",
+                    "format": "### {retweet_id|?|🔁 [RETWEET] |🐦 }Tweet ID: `{tweet_id}`\n**Author:** {author[name]} (@{author[nick]})\n**Username:** {user[name]} (@{user[nick]})\n**Date:** {date}\n\n{content}\n\n---\n\n",
+                    "filter": "retweet_id == 0 or author['name'] != user['name']"
+                }
+            ]
+        }
+    }
+}

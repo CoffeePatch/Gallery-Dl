@@ -11,10 +11,10 @@ A highly optimized Node.js / Playwright script used to scan thousands of X accou
 - **Under the hood:** It launches a headless Chromium browser, injects your session cookies, and features strict rate-limit defenses (micro-delays, 150-account macro batches) to prevent API bans. It auto-resumes progress seamlessly from `results.csv`.
 - 📖 [Read the detailed documentation](./account-status-checker/README.md)
 
-### 2. `media-downloader-x/`
+### 2. `scripts/`
 A powerful PowerShell wrapper around `gallery-dl` built exclusively to rip images and videos from X (Twitter) accounts.
 - **Under the hood:** It reads your target lists, spawns `gallery-dl` with a highly specific configuration, and maintains a local SQLite archive database so that running the script multiple times *never* downloads the same file twice.
-- 📖 [Read the detailed documentation](./media-downloader-x/README.md)
+- 📖 [Read the detailed documentation](./scripts/README.md)
 
 ### 3. `media-downloader-ig/`
 A dedicated PowerShell wrapper around `gallery-dl` for scraping Instagram profiles.
@@ -34,6 +34,11 @@ By design, all sensitive authentication files, target lists, and downloaded medi
 
 ## Quick Start
 To get started with any of the tools, navigate to their respective folders or run them directly from this root context.
+
+Example: running the X (Twitter) archiver:
+```powershell
+.\scripts\archive.ps1
+```
 
 Example: running the Playwright account checker:
 ```powershell
