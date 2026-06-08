@@ -19,3 +19,10 @@ instagram_cookies.txt
 users.txt
 instagram_users.txt
 accounts.txt
+
+# Thread Archiver Outputs & Trackers
+/thread-archiver/output/
+/thread-archiver/completed.txt
+/thread-archiver/failed.txt
+/thread-archiver/urls_threadreader.txt
+/thread-archiver/urls_twitterthread.txt
