@@ -1,0 +1,15 @@
+{
+    "extractor": {
+        "twitter": {
+            "retweets": "original",
+            "text-tweets": true,
+            "replies": false,
+            "conversations": false,
+            "expand": false,
+            "quoted": true,
+            "pinned": true,
+            "unique": true,
+            "sleep-request": "3.0-6.0"
+        }
+    }
+}

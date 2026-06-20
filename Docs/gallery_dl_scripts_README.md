@@ -117,3 +117,43 @@ Twitter's rate limits are imposed by Twitter/X's GraphQL API.
 - Deleted tweets.
 - Tweets from suspended/protected accounts.
 - Listing all media filenames explicitly in the Markdown text. Media files are implicitly linked by the `{tweet_id}` naming convention (e.g., `12345_1.jpg`, `12345_2.jpg`).
+
+---
+
+## Local Post-Processing Scripts
+
+In addition to the main downloader, this repository includes standalone Node.js scripts to process the raw JSON metadata collected by `gallery-dl`.
+
+### 1. `generate_timeline.js`
+This script takes the raw `.json` output from `gallery-dl` and generates a beautiful, traditional Twitter-like HTML timeline, completely offline. It injects user details, tweet text, engagement stats, and correctly embeds photos and videos inline.
+
+**Usage:**
+```powershell
+# To process a single file:
+node scripts/generate_timeline.js "TweetData/username_tweets.json"
+
+# To batch process an entire directory (default input is ../TweetData):
+node scripts/generate_timeline.js --batch
+node scripts/generate_timeline.js --batch "C:\custom\path\TweetData"
+```
+*Outputs are saved to the `TimelineOutputs` folder by default in batch mode.*
+
+### 2. `download_media.js`
+Instead of using `gallery-dl`'s built-in file downloader, this is a custom concurrent media downloader. It reads the `[3, ...]` media records from your `.json` data files and downloads all photos and videos asynchronously. It's built to be robust, featuring automatic retries, exponential backoff, and skipping already-downloaded files to save bandwidth.
+
+**Usage:**
+```powershell
+# Basic run with default parameters (reads from ../TweetData, writes to ../DownloadedMedia)
+node scripts/download_media.js
+
+# Custom configuration
+node scripts/download_media.js --concurrency 10 --input "TweetData" --output "CustomMediaFolder"
+
+# Dry run (safely check what would be downloaded without actually downloading)
+node scripts/download_media.js --dry-run
+```
+
+**Features:**
+- **Concurrency:** Uses 5 parallel download workers by default (adjustable via `--concurrency` or `-c`).
+- **Resumable:** Generates a `media_map.json` mapping URLs to local files, and automatically skips files that already exist on disk with a size > 0.
+- **Organization:** Automatically groups downloaded media into folders named after the source Twitter account.

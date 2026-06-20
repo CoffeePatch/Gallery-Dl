@@ -4,25 +4,18 @@ __pycache__/
 *.pyc
 
 # Local Data and Outputs
-/Tweets/
-/Instagram/
-/Checks/
-results.csv
+# Ignore the entire TweetData folder (JSONs, Media, Timelines, Threads, Account Statuses)
+/TweetData/
 *.log
 
 # Secrets / Auth / Session Data
-auth.json
-cookies.txt
-instagram_cookies.txt
+/Config/Cookies/
+/Config/Settings/auth.json
 
-# Target Lists
-users.txt
-instagram_users.txt
-accounts.txt
+# Target Lists (Private handles and URLs)
+/Config/Users/*.txt
+# (Optional) Allow example files to be pushed if you create them
+!/Config/Users/*example*.txt
 
-# Thread Archiver Outputs & Trackers
-/thread-archiver/output/
-/thread-archiver/completed.txt
-/thread-archiver/failed.txt
-/thread-archiver/urls_threadreader.txt
-/thread-archiver/urls_twitterthread.txt
+# Queues and State Trackers
+/Config/Queues/

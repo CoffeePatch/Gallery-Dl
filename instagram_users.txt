@@ -1,5 +1,0 @@
-# One Instagram target per line (profile, post, reel, etc.)
-# Examples:
-# https://www.instagram.com/<username>/
-# https://www.instagram.com/p/<shortcode>/
-# https://www.instagram.com/reel/<shortcode>/
