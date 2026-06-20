@@ -4,7 +4,7 @@ A local automation pipeline built to systematically archive digital threads offl
 
 ## 📁 Directory Structure
 
-- **`archive.js`**: The main automation script driving the headless browser.
+- **`scripts/native_x_thread_archiver.js`**: (Recommended) The main automation script driving the headless browser.
 - **`urls_threadreader.txt`**: Input file for Thread Reader App URLs.
 - **`urls_twitterthread.txt`**: Input file for Twitter Thread URLs (fallback).
 - **`completed.txt`**: Auto-generated tracking file for successfully processed URLs.
@@ -41,7 +41,7 @@ A local automation pipeline built to systematically archive digital threads offl
 1. **Add URLs:** Open `urls_threadreader.txt` and/or `urls_twitterthread.txt` and paste the URLs you wish to archive (one URL per line).
 2. **Execute:** Run the automation script:
    ```bash
-   node archive.js
+   node scripts/native_x_thread_archiver.js
    ```
 3. **Monitor Progress:** The script will output its progress to the terminal, confirming saved files and noting any retries or errors.
 4. **Review Results:** Once finished, open the `output/` folder to view your fully offline archives. Any URLs that ultimately failed will be neatly listed in `failed.txt`.
