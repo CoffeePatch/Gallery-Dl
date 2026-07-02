@@ -9,7 +9,8 @@
             "quoted": true,
             "pinned": true,
             "unique": true,
-            "sleep-request": "3.0-6.0"
+            "sleep-request": "3.0-6.0",
+            "download": false
         }
     }
 }

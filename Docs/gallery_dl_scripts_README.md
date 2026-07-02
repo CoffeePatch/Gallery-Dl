@@ -32,13 +32,30 @@ This module is a focused wrapper around `gallery-dl` specifically designed to do
 From the root directory, you can run the batch process:
 
 ```powershell
-.\scripts\archive.ps1
+.\Scripts\gallerydl_batch_scraper.ps1
 ```
+
+### Execution Modes and Flags
+
+The script supports three distinct modes. Understanding these flags is critical to how it interacts with the Twitter API and your existing downloaded data:
+
+1. **Default Mode (No Flags):** 
+   - **Command:** `.\Scripts\gallerydl_batch_scraper.ps1`
+   - **Behavior:** The script reads the SQLite database to see what tweets you have already extracted. When it encounters known tweets, it will skip them. **Critically**, it will instantly `--abort` making API requests to Twitter once it sees 5 consecutive known tweets. This is the intended behavior for updating accounts you've previously scraped, as it saves massive amounts of time and rate limits.
+   
+2. **Skip Mode (`-Skip`):**
+   - **Command:** `.\Scripts\gallerydl_batch_scraper.ps1 -Skip`
+   - **Behavior:** Operates identical to Default Mode (aborts after 5 known tweets). *Note: In older versions, Default mode lacked the abort trigger, making this flag necessary. Default mode now natively includes the abort trigger to prevent API waste.*
+
+3. **Overwrite Mode (`-Overwrite`):**
+   - **Command:** `.\Scripts\gallerydl_batch_scraper.ps1 -Overwrite`
+   - **Behavior:** **DANGEROUS.** This flag completely ignores your existing SQLite database and *deletes* the local JSON file for the target account. It forces a 100% fresh, complete extraction of the account's entire timeline from scratch. Use this only if your local data is corrupted and you need to completely redownload the account's metadata.
 
 ### Script Behavior
 - **Automatic Paths:** The script dynamically resolves `users.txt` and `cookies.txt` from the parent directory.
 - **Cookies & Authentication:** It will attempt to use `cookies.txt` in the root folder. If absent, it automatically falls back to your local Microsoft Edge browser cookies (`--cookies-from-browser edge`).
 - **Rate Limit Protection:** It enforces a built-in randomized sleep request between actions to mitigate X API limits.
+- **SQLite Archive Pre-population:** If you have existing JSON files from a previous run but *no* SQLite database files, you **must** run `.\Scripts\prepopulate_archives.ps1` first. Otherwise, the scraper will think you have zero existing tweets and will download the entire timeline again (wasting API requests).
 
 ## Under the Hood Workflow
 
@@ -143,8 +160,14 @@ Instead of using `gallery-dl`'s built-in file downloader, this is a custom concu
 
 **Usage:**
 ```powershell
-# Basic run with default parameters (reads from ../TweetData, writes to ../DownloadedMedia)
+# Basic run with default parameters (downloads both images and videos)
 node scripts/download_media.js
+
+# Download only videos
+node scripts/download_media.js --videos-only
+
+# Download only images
+node scripts/download_media.js -i
 
 # Custom configuration
 node scripts/download_media.js --concurrency 10 --input "TweetData" --output "CustomMediaFolder"
@@ -155,5 +178,51 @@ node scripts/download_media.js --dry-run
 
 **Features:**
 - **Concurrency:** Uses 5 parallel download workers by default (adjustable via `--concurrency` or `-c`).
+- **Media Filtering:** Use `--videos-only` (or `-v`) or `--images-only` (or `-i`) to fetch specific media types.
 - **Resumable:** Generates a `media_map.json` mapping URLs to local files, and automatically skips files that already exist on disk with a size > 0.
-- **Organization:** Automatically groups downloaded media into folders named after the source Twitter account.
+- **Organization & Sorting:** Automatically groups downloaded media into folders named after the source account. Files are prefixed with `YYYY_MM_DD_` so they automatically sort chronologically in your file explorer.
+
+### 3. `filter_large_videos.js`
+Filters video media records out of raw JSON files using a duration threshold. Instead of downloading files, it extracts matching metadata records and saves them into individual `[accountname]_Large.json` files.
+
+**Usage:**
+```powershell
+# Default run (filters videos >= 30 seconds from TweetData/RawData and saves to TweetData/LargeRawData)
+node scripts/filter_large_videos.js
+
+# Filter videos LESS than 25 minutes from TweetData/NewRawData
+node scripts/filter_large_videos.js -i TweetData/NewRawData -t 25m -l
+
+# Filter videos GREATER than 25 minutes from TweetData/NewRawData
+node scripts/filter_large_videos.js -i TweetData/NewRawData -t 25m
+```
+
+**Options & Flags:**
+- `-i <path>` / `--input <path>`: Source folder containing raw JSON files (default: `TweetData/RawData`).
+- `-o <path>` / `--output <path>`: Directory to save filtered JSON files (default: `TweetData/LargeRawData`).
+- `-t <duration>` / `--threshold <duration>`: Duration threshold (supports units like `s` or `m`, e.g. `25m` or `30s`). Default is `30m`.
+- `-l` / `--less-than`: Flag to select videos *less than* the threshold (if omitted, filters for videos *greater than or equal to* the threshold).
+
+### 4. `generate_summary_stats.js`
+Scans raw metadata JSON files and aggregates stats for each account (total tweets, retweets, original tweets, videos, images, and total records). It outputs a neat summary report in Markdown and/or CSV formats.
+
+**Usage:**
+```powershell
+# Basic run (reads RawData/ and outputs both summary_stats.md and summary_stats.csv)
+node scripts/generate_summary_stats.js
+
+# Read from custom directory NewRawData/ and generate reports
+node scripts/generate_summary_stats.js -i TweetData/NewRawData
+
+# Generate ONLY a CSV report
+node scripts/generate_summary_stats.js -f csv
+
+# Generate a Markdown report to a specific custom location
+node scripts/generate_summary_stats.js -o TweetData/Reports/scraped_accounts -f md
+```
+
+**Options & Flags:**
+- `-i <dir>` / `--input <dir>`: Folder containing the raw JSON files (default: `TweetData/RawData`).
+- `-o <path>` / `--output <path>`: Custom base file path for reports (default: `TweetData/summary_stats`).
+- `-f <format>` / `--format <format>`: Output format choice (`md`, `csv`, or `both`). Default is `both`.
+

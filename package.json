@@ -4,7 +4,20 @@
   "description": "Unified dependencies for Gallery-Dl project scripts",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "scrape": "powershell -ExecutionPolicy Bypass -File ./Scripts/gallerydl_batch_scraper.ps1",
+    "scrape:skip": "powershell -ExecutionPolicy Bypass -File ./Scripts/gallerydl_batch_scraper.ps1 -Skip",
+    "scrape:overwrite": "powershell -ExecutionPolicy Bypass -File ./Scripts/gallerydl_batch_scraper.ps1 -Overwrite",
+    "threads": "node ./Scripts/thread_manager.js",
+    "timeline": "node ./Scripts/generate_timeline.js",
+    "timeline:batch": "node ./Scripts/generate_timeline.js --batch",
+    "media": "node ./Scripts/download_media.js",
+    "stats": "node ./Scripts/maintenance_manager.js --stats",
+    "filter-large": "node ./Scripts/maintenance_manager.js --filter-large",
+    "separate-threads": "node ./Scripts/maintenance_manager.js --separate-threads",
+    "clean-retweets": "node ./Scripts/maintenance_manager.js --clean-retweets",
+    "x-check": "node ./Scripts/maintenance_manager.js --x-check",
+    "x-auth": "node ./Scripts/maintenance_manager.js --x-auth",
+    "maintenance": "node ./Scripts/maintenance_manager.js"
   },
   "keywords": [],
   "author": "",

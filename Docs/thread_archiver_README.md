@@ -4,8 +4,9 @@ A local automation pipeline built to systematically archive digital threads offl
 
 ## 📁 Directory Structure
 
-- **`scripts/native_x_thread_archiver.js`**: (Recommended) The main automation script driving the headless browser.
-- **`urls_threadreader.txt`**: Input file for Thread Reader App URLs.
+- **`scripts/native_x_thread_archiver.js`**: (Recommended) The main automation script driving the headless browser for native X threads.
+- **`scripts/threadreader_archiver.js`**: Archiver tailored for scraping ThreadReaderApp directly, featuring automatic User Profile expansion.
+- **`urls_threadreader.txt`**: Input file for Thread Reader App URLs (Supports both `/user/` profiles and direct `/thread/` URLs).
 - **`urls_twitterthread.txt`**: Input file for Twitter Thread URLs (fallback).
 - **`completed.txt`**: Auto-generated tracking file for successfully processed URLs.
 - **`failed.txt`**: Auto-generated tracking file logging failed URLs for review or re-processing.
@@ -15,7 +16,8 @@ A local automation pipeline built to systematically archive digital threads offl
 ## ⚙️ How the Workflow Works (Step-by-Step Map)
 
 1. **Initialization:** The script reads `urls_threadreader.txt` and `urls_twitterthread.txt` and filters out any URLs already present in `completed.txt` to prevent duplicate processing.
-2. **Launch:** A stealth Puppeteer headless browser is launched to evade Cloudflare and other bot detections.
+2. **Profile Expansion (`threadreader_archiver.js`):** If a `/user/` profile URL is detected, the script automatically navigates to the profile, scrolls to the bottom to load all dynamic content, extracts the individual thread URLs, and injects them into the active queue.
+3. **Launch:** A stealth Puppeteer headless browser is launched to evade Cloudflare and other bot detections.
 3. **Navigation & Setup:** For each URL, a new tab opens and the viewport is set to 1920x1080 to ensure maximum quality assets are requested.
 4. **Unroll Detection:** The script checks for and clicks any "Unroll" or "Read full thread" buttons to expand the page.
 5. **Lazy Loading:** A paced scrolling function is executed, scrolling smoothly in 500px increments to trigger `IntersectionObserver` elements and ensure all lazy-loaded images fetch properly.

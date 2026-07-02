@@ -200,7 +200,570 @@ function getIcons() {
     };
 }
 
-function processFile(filePath) {
+const additionalCss = `
+/* Navigation & Index styles */
+.timeline-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2f3336;
+    background-color: #000000;
+}
+.nav-btn {
+    color: #1d9bf0;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 6px 16px;
+    border: 1px solid #2f3336;
+    border-radius: 9999px;
+    transition: background-color 0.2s;
+    display: inline-block;
+}
+.nav-btn:hover:not(.disabled) {
+    background-color: rgba(29, 155, 240, 0.1);
+}
+.nav-btn.disabled {
+    color: #71767b;
+    cursor: not-allowed;
+    border-color: #2f3336;
+    background-color: transparent;
+}
+.nav-page-num {
+    font-size: 14px;
+    color: #71767b;
+    font-weight: 600;
+}
+.index-container {
+    max-width: 600px;
+    margin: 0 auto;
+    border-left: 1px solid #2f3336;
+    border-right: 1px solid #2f3336;
+    min-height: 100vh;
+    padding: 24px;
+    box-sizing: border-box;
+}
+.index-header {
+    margin-bottom: 32px;
+    border-bottom: 1px solid #2f3336;
+    padding-bottom: 16px;
+}
+.index-header h1 {
+    font-size: 28px;
+    font-weight: 800;
+    margin: 0 0 8px 0;
+}
+.index-header p {
+    color: #71767b;
+    font-size: 15px;
+    margin: 0;
+}
+.index-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.index-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid #2f3336;
+    border-radius: 16px;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+.index-card:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: #1d9bf0;
+}
+.index-card-title {
+    font-weight: 700;
+    font-size: 16px;
+    color: #1d9bf0;
+    margin-bottom: 4px;
+}
+.index-card-meta {
+    font-size: 13px;
+    color: #71767b;
+}
+.index-card-count {
+    background-color: #2f3336;
+    color: #e7e9ea;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 700;
+}
+`;
+
+function getNormalizedUrl(url) {
+    if (url && url.includes('pbs.twimg.com/media/')) {
+        try {
+            const urlObj = new URL(url);
+            urlObj.searchParams.delete('name');
+            urlObj.searchParams.set('name', 'orig');
+            return urlObj.toString();
+        } catch (e) {
+            return url;
+        }
+    }
+    return url;
+}
+
+function getMediaPaths(mappedPath, outDir) {
+    const mediaDir = path.join(__dirname, '..', 'TweetData', 'Media');
+    const relativeToOut = path.relative(outDir, mediaDir);
+    const directRelative = path.join(relativeToOut, mappedPath).replace(/\\/g, '/');
+    const internalRelative = `./Media/${mappedPath}`.replace(/\\/g, '/');
+    return { directRelative, internalRelative };
+}
+
+function buildImageHtml(img, outDir, mediaMap) {
+    const normUrl = getNormalizedUrl(img.url);
+    const mappedPath = mediaMap[normUrl];
+    const webUrl = img.url;
+    
+    if (mappedPath) {
+        const absolutePath = path.join(__dirname, '..', 'TweetData', 'Media', mappedPath);
+        if (fs.existsSync(absolutePath)) {
+            const { directRelative, internalRelative } = getMediaPaths(mappedPath, outDir);
+            return `<img src="${webUrl}" data-local1="${directRelative}" data-local2="${internalRelative}" alt="Image" loading="lazy" onerror="handleImageError(this)">`;
+        }
+    }
+    return `<img src="${webUrl}" alt="Image" loading="lazy">`;
+}
+
+function buildImageBase64Html(img, mediaMap, outDir) {
+    const normUrl = getNormalizedUrl(img.url);
+    const mappedPath = mediaMap[normUrl];
+    const webUrl = img.url;
+    
+    if (mappedPath) {
+        const absolutePath = path.join(__dirname, '..', 'TweetData', 'Media', mappedPath);
+        if (fs.existsSync(absolutePath)) {
+            try {
+                const ext = path.extname(absolutePath).toLowerCase();
+                let mimeType = 'image/jpeg';
+                if (ext === '.png') mimeType = 'image/png';
+                else if (ext === '.gif') mimeType = 'image/gif';
+                else if (ext === '.webp') mimeType = 'image/webp';
+                else if (ext === '.svg') mimeType = 'image/svg+xml';
+                
+                const base64Data = fs.readFileSync(absolutePath).toString('base64');
+                const dataUri = `data:${mimeType};base64,${base64Data}`;
+                return `<img src="${dataUri}" alt="Image" loading="lazy">`;
+            } catch (e) {
+                console.error(`Error encoding image ${absolutePath} to base64:`, e.message);
+            }
+        }
+    }
+    return `<img src="${webUrl}" alt="Image" loading="lazy">`;
+}
+
+function buildVideoHtml(video, outDir, mediaMap) {
+    const normUrl = getNormalizedUrl(video.url);
+    const mappedPath = mediaMap[normUrl];
+    const webUrl = video.url;
+    const posterUrl = webUrl.replace('.mp4', '.jpg');
+    
+    let posterAttr = `poster="${posterUrl}"`;
+    let sources = `<source src="${webUrl}" type="video/mp4">`;
+    
+    if (mappedPath) {
+        const absolutePath = path.join(__dirname, '..', 'TweetData', 'Media', mappedPath);
+        if (fs.existsSync(absolutePath)) {
+            const { directRelative, internalRelative } = getMediaPaths(mappedPath, outDir);
+            const directPoster = directRelative.replace('.mp4', '.jpg');
+            const internalPoster = internalRelative.replace('.mp4', '.jpg');
+            
+            posterAttr = `poster="${posterUrl}" data-poster-local1="${directPoster}" data-poster-local2="${internalPoster}"`;
+            
+            sources += `
+            <source src="${directRelative}" type="video/mp4">
+            <source src="${internalRelative}" type="video/mp4">`;
+        }
+    }
+    
+    return `
+    <div class="video-container">
+        <video controls loop preload="none" ${posterAttr}>
+            ${sources}
+            Your browser does not support the video tag.
+        </video>
+    </div>`;
+}
+
+function buildTweetHtml(tweet, mediaByTweet, mediaMap, outDir, useBase64, targetAccount) {
+    const isRetweet = tweet.retweet_id !== undefined && tweet.retweet_id !== 0 && tweet.retweet_id !== null;
+    const author = tweet.author || targetAccount;
+    const reposter = tweet.user || targetAccount;
+    const icons = getIcons();
+    
+    let repostHeader = '';
+    if (isRetweet) {
+        repostHeader = `
+        <div class="repost-indicator">
+            ${icons.repost}
+            <span>${reposter ? reposter.nick : 'User'} Reposted</span>
+        </div>`;
+    }
+
+    const dateStr = new Date(tweet.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+    let mediaHtml = '';
+    const tMedia = mediaByTweet[tweet.tweet_id] || [];
+    if (tMedia.length > 0) {
+        tMedia.sort((a, b) => a.meta.num - b.meta.num);
+        
+        const videos = tMedia.filter(m => m.meta.type === 'video' || m.meta.type === 'animated_gif');
+        const images = tMedia.filter(m => m.meta.type === 'image' || m.meta.type === 'photo');
+
+        if (videos.length > 0) {
+            mediaHtml = buildVideoHtml(videos[0], outDir, mediaMap);
+        } else if (images.length > 0) {
+            let gridClass = `media-grid-${Math.min(images.length, 4)}`;
+            mediaHtml = `<div class="media-grid ${gridClass}">`;
+            images.slice(0, 4).forEach(img => {
+                if (useBase64) {
+                    mediaHtml += buildImageBase64Html(img, mediaMap, outDir);
+                } else {
+                    mediaHtml += buildImageHtml(img, outDir, mediaMap);
+                }
+            });
+            mediaHtml += `</div>`;
+        }
+    }
+
+    const avatarUrl = author && author.profile_image ? author.profile_image : '';
+
+    return `
+    <div class="tweet" data-tweet-id="${tweet.tweet_id}">
+        <div>
+            <img src="${avatarUrl}" alt="" class="avatar" loading="lazy">
+        </div>
+        <div class="tweet-content">
+            ${repostHeader}
+            <div class="tweet-header">
+                <a href="https://x.com/${author ? author.name : 'user'}" target="_blank" class="name">${author ? author.nick : 'User'}</a>
+                <span class="handle">@${author ? author.name : 'user'}</span>
+                <span class="date">· <a href="https://x.com/${author ? author.name : 'user'}/status/${tweet.tweet_id}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${dateStr}</a></span>
+                <span class="date" style="margin-left: auto; font-size: 12px; cursor: help;" title="Original Tweet ID">ID: ${tweet.tweet_id}</span>
+            </div>
+            <div class="text">${tweet.content || ''}</div>
+            ${mediaHtml}
+            <div class="stats">
+                <div class="stat" title="Reply">
+                    ${icons.reply} <span>${tweet.reply_count || 0}</span>
+                </div>
+                <div class="stat" title="Repost">
+                    ${icons.repost} <span>${tweet.retweet_count || 0}</span>
+                </div>
+                <div class="stat" title="Like">
+                    ${icons.like} <span>${tweet.favorite_count || 0}</span>
+                </div>
+                <div class="stat" title="View">
+                    ${icons.view} <span>${tweet.view_count || 0}</span>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function generateSingleFileHtml(tweets, mediaByTweet, mediaMap, outHtmlPath, targetAccount) {
+    const outDir = path.dirname(outHtmlPath);
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${targetAccount ? targetAccount.nick : 'Timeline'}</title>
+    <style>${cssTemplate + additionalCss}</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>${targetAccount ? targetAccount.nick : 'Archive'}</h1>
+            <p>${tweets.length} posts</p>
+        </div>
+`;
+
+    tweets.forEach(tweet => {
+        html += buildTweetHtml(tweet, mediaByTweet, mediaMap, outDir, false, targetAccount);
+    });
+
+    html += `
+    </div>
+    <script>
+    function handleImageError(img) {
+        if (img.dataset.local1 && img.src !== img.dataset.local1 && !img.dataset.triedLocal1) {
+            img.dataset.triedLocal1 = "true";
+            img.src = img.dataset.local1;
+        } else if (img.dataset.local2 && img.src !== img.dataset.local2 && !img.dataset.triedLocal2) {
+            img.dataset.triedLocal2 = "true";
+            img.src = img.dataset.local2;
+        } else {
+            img.onerror = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Video poster fallback
+        document.querySelectorAll('video').forEach(video => {
+            const poster = video.getAttribute('poster');
+            if (poster) {
+                const img = new Image();
+                img.src = poster;
+                img.onerror = () => {
+                    const local1 = video.getAttribute('data-poster-local1');
+                    if (local1) {
+                        const imgLocal1 = new Image();
+                        imgLocal1.src = local1;
+                        imgLocal1.onload = () => {
+                            video.setAttribute('poster', local1);
+                        };
+                        imgLocal1.onerror = () => {
+                            const local2 = video.getAttribute('data-poster-local2');
+                            if (local2) {
+                                video.setAttribute('poster', local2);
+                            }
+                        };
+                    }
+                };
+            }
+        });
+
+        // Video IntersectionObserver for lazy loading and scrolling play/pause
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const video = entry.target;
+                if (entry.isIntersecting) {
+                    if (video.preload === 'none') {
+                        video.preload = 'metadata';
+                    }
+                } else {
+                    if (!video.paused) {
+                        video.pause();
+                    }
+                }
+            });
+        }, { rootMargin: '100px 0px', threshold: 0.01 });
+
+        document.querySelectorAll('video').forEach(video => {
+            observer.observe(video);
+        });
+    });
+    </script>
+</body>
+</html>`;
+
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(outHtmlPath, html, 'utf8');
+}
+
+function generateIndexPage(pages, outPaginatedDir, targetAccount, totalTweets) {
+    const indexPath = path.join(outPaginatedDir, 'index.html');
+    
+    let gridHtml = '';
+    pages.forEach(p => {
+        const oldestStr = p.oldestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const newestStr = p.newestDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        
+        gridHtml += `
+        <a href="${p.fileName}" class="index-card">
+            <div>
+                <div class="index-card-title">Page ${p.pageNum}</div>
+                <div class="index-card-meta">${oldestStr} - ${newestStr}</div>
+            </div>
+            <div class="index-card-count">${p.count} posts</div>
+        </a>`;
+    });
+    
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${targetAccount ? targetAccount.nick : 'Archive'} - Timeline Index</title>
+    <style>${cssTemplate + additionalCss}</style>
+</head>
+<body>
+    <div class="index-container">
+        <div class="index-header">
+            <h1>${targetAccount ? targetAccount.nick : 'Archive'}</h1>
+            <p>Timeline Archive Index &bull; ${totalTweets} posts across ${pages.length} pages</p>
+        </div>
+        <div class="index-grid">
+            ${gridHtml}
+        </div>
+    </div>
+</body>
+</html>`;
+    
+    fs.writeFileSync(indexPath, html, 'utf8');
+}
+
+function generatePaginatedTimeline(tweets, mediaByTweet, mediaMap, outPaginatedDir, targetAccount, thresholdBytes) {
+    fs.mkdirSync(outPaginatedDir, { recursive: true });
+
+    let pages = [];
+    let pageNum = 1;
+    let pageTweets = [];
+    let runningBytes = 0;
+    
+    const scaffoldingHeader = (pageNum) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${targetAccount ? targetAccount.nick : 'Timeline'} - Page ${pageNum}</title>
+    <style>${cssTemplate + additionalCss}</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>${targetAccount ? targetAccount.nick : 'Archive'}</h1>
+            <p>Page ${pageNum}</p>
+        </div>
+`;
+
+    const scaffoldingFooter = `
+    </div>
+    <script>
+    function handleImageError(img) {
+        if (img.dataset.local1 && img.src !== img.dataset.local1 && !img.dataset.triedLocal1) {
+            img.dataset.triedLocal1 = "true";
+            img.src = img.dataset.local1;
+        } else if (img.dataset.local2 && img.src !== img.dataset.local2 && !img.dataset.triedLocal2) {
+            img.dataset.triedLocal2 = "true";
+            img.src = img.dataset.local2;
+        } else {
+            img.onerror = null;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Video poster fallback
+        document.querySelectorAll('video').forEach(video => {
+            const poster = video.getAttribute('poster');
+            if (poster) {
+                const img = new Image();
+                img.src = poster;
+                img.onerror = () => {
+                    const local1 = video.getAttribute('data-poster-local1');
+                    if (local1) {
+                        const imgLocal1 = new Image();
+                        imgLocal1.src = local1;
+                        imgLocal1.onload = () => {
+                            video.setAttribute('poster', local1);
+                        };
+                        imgLocal1.onerror = () => {
+                            const local2 = video.getAttribute('data-poster-local2');
+                            if (local2) {
+                                video.setAttribute('poster', local2);
+                            }
+                        };
+                    }
+                };
+            }
+        });
+
+        // Video IntersectionObserver for lazy loading and scrolling play/pause
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const video = entry.target;
+                if (entry.isIntersecting) {
+                    if (video.preload === 'none') {
+                        video.preload = 'metadata';
+                    }
+                } else {
+                    if (!video.paused) {
+                        video.pause();
+                    }
+                }
+            });
+        }, { rootMargin: '100px 0px', threshold: 0.01 });
+
+        document.querySelectorAll('video').forEach(video => {
+            observer.observe(video);
+        });
+    });
+    </script>
+</body>
+</html>`;
+
+    function writePage(pNum, tweetsList, isLast) {
+        const fileName = `page_${String(pNum).padStart(3, '0')}.html`;
+        const filePath = path.join(outPaginatedDir, fileName);
+        const navHtml = getNavigationHtml(pNum, isLast);
+        
+        let pageContent = scaffoldingHeader(pNum) + navHtml;
+        tweetsList.forEach(t => {
+            pageContent += t.html;
+        });
+        pageContent += navHtml + scaffoldingFooter;
+        
+        fs.writeFileSync(filePath, pageContent, 'utf8');
+        
+        if (tweetsList.length > 0) {
+            const oldestTweet = tweetsList[tweetsList.length - 1].raw;
+            const newestTweet = tweetsList[0].raw;
+            pages.push({
+                fileName,
+                pageNum: pNum,
+                count: tweetsList.length,
+                oldestDate: new Date(oldestTweet.date),
+                newestDate: new Date(newestTweet.date)
+            });
+        }
+    }
+
+    function getNavigationHtml(pageNum, isLastPage) {
+        const prevPage = pageNum > 1 ? `page_${String(pageNum - 1).padStart(3, '0')}.html` : null;
+        const nextPage = !isLastPage ? `page_${String(pageNum + 1).padStart(3, '0')}.html` : null;
+        
+        return `
+        <div class="timeline-navigation">
+            ${prevPage ? `<a href="${prevPage}" class="nav-btn">&larr; Previous Page</a>` : `<span class="nav-btn disabled">&larr; Previous Page</span>`}
+            <span class="nav-page-num">Page ${pageNum}</span>
+            ${nextPage ? `<a href="${nextPage}" class="nav-btn">Next Page &rarr;</a>` : `<span class="nav-btn disabled">Next Page &rarr;</span>`}
+        </div>
+        `;
+    }
+
+    for (let i = 0; i < tweets.length; i++) {
+        const tweet = tweets[i];
+        
+        let tweetHtml = buildTweetHtml(tweet, mediaByTweet, mediaMap, outPaginatedDir, true, targetAccount);
+        let tweetSize = Buffer.byteLength(tweetHtml, 'utf8');
+        
+        if (tweetSize > 2 * thresholdBytes) {
+            console.log(`[Warning] Tweet ${tweet.tweet_id} size (${(tweetSize / (1024 * 1024)).toFixed(2)} MB) exceeds 2x threshold. Falling back to relative paths.`);
+            tweetHtml = buildTweetHtml(tweet, mediaByTweet, mediaMap, outPaginatedDir, false, targetAccount);
+            tweetSize = Buffer.byteLength(tweetHtml, 'utf8');
+        }
+        
+        if (runningBytes + tweetSize > thresholdBytes && pageTweets.length > 0) {
+            writePage(pageNum, pageTweets, false);
+            pageNum++;
+            pageTweets = [];
+            runningBytes = 0;
+        }
+        
+        pageTweets.push({ raw: tweet, html: tweetHtml });
+        runningBytes += tweetSize;
+    }
+    
+    if (pageTweets.length > 0) {
+        writePage(pageNum, pageTweets, true);
+    }
+    
+    generateIndexPage(pages, outPaginatedDir, targetAccount, tweets.length);
+}
+
+function processFile(filePath, outHtmlPath, outPaginatedDir, options) {
     const rawData = fs.readFileSync(filePath, 'utf8');
     const records = JSON.parse(rawData);
 
@@ -226,116 +789,66 @@ function processFile(filePath) {
 
     tweets.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    let html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>\${targetAccount ? targetAccount.nick : 'Timeline'}</title>
-    <style>\${cssTemplate}</style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>\${targetAccount ? targetAccount.nick : 'Archive'}</h1>
-            <p>\${tweets.length} posts</p>
-        </div>
-`;
-
-    tweets.forEach(tweet => {
-        const isRetweet = tweet.retweet_id !== undefined && tweet.retweet_id !== 0 && tweet.retweet_id !== null;
-        const author = tweet.author || targetAccount;
-        const reposter = tweet.user || targetAccount;
-        const icons = getIcons();
-        
-        let repostHeader = '';
-        if (isRetweet) {
-            repostHeader = `
-            <div class="repost-indicator">
-                \${icons.repost}
-                <span>\${reposter.nick} Reposted</span>
-            </div>`;
+    const mappingFileName = `${path.basename(filePath, '.json')}_media_map.json`;
+    const mappingDir = path.join(__dirname, '..', 'TweetData', 'Media', 'Mappings');
+    const mappingPath = path.join(mappingDir, mappingFileName);
+    
+    let mediaMap = {};
+    if (fs.existsSync(mappingPath)) {
+        try {
+            mediaMap = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+        } catch (e) {
+            console.error(`Warning: Failed to load media map from ${mappingPath}:`, e.message);
         }
+    }
 
-        const dateStr = new Date(tweet.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-
-        let mediaHtml = '';
-        const tMedia = mediaByTweet[tweet.tweet_id] || [];
-        if (tMedia.length > 0) {
-            tMedia.sort((a, b) => a.meta.num - b.meta.num);
-            
-            // Check for videos
-            const videos = tMedia.filter(m => m.meta.type === 'video' || m.meta.type === 'animated_gif');
-            const images = tMedia.filter(m => m.meta.type === 'image' || m.meta.type === 'photo');
-
-            if (videos.length > 0) {
-                // If there's a video, typically just show the first one
-                mediaHtml = `
-                <div class="video-container">
-                    <video src="\${videos[0].url}" controls loop preload="none" poster="\${videos[0].url.replace('.mp4', '.jpg')}"></video>
-                </div>`;
-            } else if (images.length > 0) {
-                let gridClass = `media-grid-\${Math.min(images.length, 4)}`;
-                mediaHtml = `<div class="media-grid \${gridClass}">`;
-                images.slice(0, 4).forEach(img => {
-                    mediaHtml += `<img src="\${img.url}" alt="Image" loading="lazy">`;
-                });
-                mediaHtml += `</div>`;
-            }
-        }
-
-        html += `
-        <div class="tweet">
-            <div>
-                <img src="\${author ? author.profile_image : ''}" alt="" class="avatar" loading="lazy">
-            </div>
-            <div class="tweet-content">
-                \${repostHeader}
-                <div class="tweet-header">
-                    <a href="https://x.com/\${author ? author.name : 'user'}" target="_blank" class="name">\${author ? author.nick : 'User'}</a>
-                    <span class="handle">@\${author ? author.name : 'user'}</span>
-                    <span class="date">· <a href="https://x.com/\${author ? author.name : 'user'}/status/\${tweet.tweet_id}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">\${dateStr}</a></span>
-                    <span class="date" style="margin-left: auto; font-size: 12px; cursor: help;" title="Original Tweet ID">ID: \${tweet.tweet_id}</span>
-                </div>
-                <div class="text">\${tweet.content || ''}</div>
-                \${mediaHtml}
-                <div class="stats">
-                    <div class="stat" title="Reply">
-                        \${icons.reply} <span>\${tweet.reply_count || 0}</span>
-                    </div>
-                    <div class="stat" title="Repost">
-                        \${icons.repost} <span>\${tweet.retweet_count || 0}</span>
-                    </div>
-                    <div class="stat" title="Like">
-                        \${icons.like} <span>\${tweet.favorite_count || 0}</span>
-                    </div>
-                    <div class="stat" title="View">
-                        \${icons.view} <span>\${tweet.view_count || 0}</span>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    });
-
-    html += `
-    </div>
-</body>
-</html>`;
-
-    return html;
+    if (options.type === 'single' || options.type === 'both') {
+        console.log(`Generating single-file HTML at ${outHtmlPath}...`);
+        generateSingleFileHtml(tweets, mediaByTweet, mediaMap, outHtmlPath, targetAccount);
+    }
+    
+    if (options.type === 'paginated' || options.type === 'both') {
+        console.log(`Generating paginated HTML at ${outPaginatedDir}...`);
+        generatePaginatedTimeline(tweets, mediaByTweet, mediaMap, outPaginatedDir, targetAccount, options.thresholdBytes);
+    }
 }
 
 function main() {
     const args = process.argv.slice(2);
     let isBatch = false;
     let inputPath = '';
+    let type = 'both';
+    let thresholdMb = 50;
+
+    const typeIndex = args.indexOf('--type');
+    if (typeIndex !== -1 && args[typeIndex + 1]) {
+        type = args[typeIndex + 1].toLowerCase();
+    }
+    const thresholdIndex = args.indexOf('--threshold');
+    if (thresholdIndex !== -1 && args[thresholdIndex + 1]) {
+        thresholdMb = parseFloat(args[thresholdIndex + 1]) || 50;
+    }
 
     if (args.includes('--batch')) {
         isBatch = true;
         const index = args.indexOf('--batch');
-        inputPath = args[index + 1] || '../TweetData/RawData';
+        const nextArg = args[index + 1];
+        if (nextArg && !nextArg.startsWith('--')) {
+            inputPath = nextArg;
+        } else {
+            inputPath = path.join(__dirname, '..', 'TweetData', 'RawData');
+        }
     } else {
-        inputPath = args[0];
+        for (let i = 0; i < args.length; i++) {
+            if (args[i].startsWith('--')) {
+                if (['--type', '--threshold'].includes(args[i])) {
+                    i++;
+                }
+                continue;
+            }
+            inputPath = args[i];
+            break;
+        }
     }
 
     if (!inputPath) {
@@ -343,29 +856,34 @@ function main() {
         process.exit(1);
     }
 
+    const options = {
+        type,
+        thresholdBytes: thresholdMb * 1024 * 1024
+    };
+
     if (isBatch) {
         const outDir = path.join(__dirname, '..', 'TweetData', 'TimeLineOutput');
         if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
         }
         const files = fs.readdirSync(inputPath).filter(f => f.endsWith('.json'));
-        console.log(`Found \${files.length} JSON files to process.`);
+        console.log(`Found ${files.length} JSON files to process.`);
         
         files.forEach((f, i) => {
             const p = path.join(inputPath, f);
-            console.log(`[\${i+1}/\${files.length}] Processing \${f}...`);
-            const html = processFile(p);
-            const outFile = path.join(outDir, f.replace('.json', '.html'));
-            fs.writeFileSync(outFile, html, 'utf8');
+            console.log(`[${i+1}/${files.length}] Processing ${f}...`);
+            const outHtmlPath = path.join(outDir, f.replace('.json', '.html'));
+            const outPaginatedDir = path.join(outDir, f.replace('.json', '_paginated'));
+            processFile(p, outHtmlPath, outPaginatedDir, options);
         });
-        console.log(`Batch processing complete. Output in \${outDir}`);
+        console.log(`Batch processing complete. Output in ${outDir}`);
     } else {
-        console.log(`Processing \${inputPath}...`);
-        const html = processFile(inputPath);
+        console.log(`Processing ${inputPath}...`);
         const parsed = path.parse(inputPath);
-        const outFile = path.join(parsed.dir, parsed.name + '.html');
-        fs.writeFileSync(outFile, html, 'utf8');
-        console.log(`Done! Output saved to \${outFile}`);
+        const outHtmlPath = path.join(parsed.dir, parsed.name + '.html');
+        const outPaginatedDir = path.join(parsed.dir, parsed.name + '_paginated');
+        processFile(inputPath, outHtmlPath, outPaginatedDir, options);
+        console.log(`Done!`);
     }
 }
 

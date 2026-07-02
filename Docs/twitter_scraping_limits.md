@@ -44,7 +44,43 @@ This is the global master limit for a standard public profile feed. X's database
 
 ---
 
-## 3. Comparison: Web GraphQL vs. Official REST API v2
+## 3. Media & CDN Limits (pbs.twimg.com / video.twimg.com)
+
+While the GraphQL API governs how fast you can find and list tweets, the actual image and video files are served through X's Content Delivery Networks (CDNs): `pbs.twimg.com` (images) and `video.twimg.com` (videos). 
+
+These CDN endpoints have their own strict rate-limiting layers independent of your session cookie:
+
+### 🌟 Core CDN Limitations & Rules
+
+- **No Authentication Needed:** The `://twimg.com` domain does not require headers, API keys, or cookies to download images.
+- **Connection Throttling:** The main risk is making too many parallel connections from a single IP. If you open hundreds of concurrent downloads, the server will block requests with `429 Too Many Requests` or `ConnectionResetError` (usually resulting in a 10-15 minute IP block).
+- **Connection Drops:** Aggressive downloading can also result in dropped streams during video processing.
+- **Resolution Rule:** Twitter CDN URLs usually end with a format modifier like `?format=jpg&name=large` or `?format=png&name=orig`. Always ensure your URLs end with `name=orig` if you want the maximum uncompressed image quality.
+
+> [!TIP]
+> **How to avoid CDN limits:**
+> Do not use aggressive multi-threading. Keep your download concurrency low (e.g. 5-10 simultaneous downloads) and ensure your `sleep-request` settings are active so the scraper has time to breathe between fetching media files.
+
+### 🛠️ Safe Execution: The Right Tooling
+
+To download thousands of URLs without breaking the CDN thresholds, you must use a tool that limits concurrency (how many files download at once) and implements a delay between batches.
+
+#### Option 1: Python Script (Recommended for Developers)
+Using an asynchronous loop with a semaphore is the safest way to control speed. Keep your concurrency at 5–10 simultaneous downloads.
+
+#### Option 2: Linux/Mac Terminal (wget / curl)
+If you have a plain text file (`urls.txt`) containing one URL per line, use `wget`. The `--limit-rate` and `--wait` flags are vital to bypass CDN detection.
+
+```bash
+wget -i urls.txt --wait=0.5 --random-wait --limit-rate=500k -P ./download_folder/
+```
+
+- `--wait=0.5`: Pauses for half a second between images.
+- `--random-wait`: Randomizes the pause duration so it looks like human behavior.
+
+---
+
+## 4. Comparison: Web GraphQL vs. Official REST API v2
 
 | Metric / Feature | Internal GraphQL API (Web Layout) | Official X REST API v2 (Basic Plan) |
 |---|---|---|
@@ -57,7 +93,7 @@ This is the global master limit for a standard public profile feed. X's database
 
 ---
 
-## 4. Best Practices for Safe Scraping (Avoiding Bans)
+## 5. Best Practices for Safe Scraping (Avoiding Bans)
 
 To maximize throughput without hitting a `429 Too Many Requests` block or triggering account locks, implement these strategies when configuring `gallery-dl` or custom bots:
 
