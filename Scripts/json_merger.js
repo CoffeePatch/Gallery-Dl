@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
+const { getRecordKey } = require('./lib/recordSchema');
+const { createStreamingParser } = require('./lib/streamingParser');
 
 // Usage: node json_merger.js <target_file_path> <mode> [clean_username] [no-tripwire] [-- <gallery-dl arguments>]
 // Modes: overwrite, skip, default
@@ -37,6 +38,7 @@ if (!targetFile) {
 const newRecords = [];
 let tripwireFired = false;
 let gdl = null;
+let parser = null;
 
 function processRecord(record) {
     if (tripwireFired) return;
@@ -54,6 +56,7 @@ function processRecord(record) {
                 if (replyTo !== targetUsername) {
                     console.error(`[TRIPWIRE] Fired! Detected reply to another user: ${tweet.reply_to}`);
                     tripwireFired = true;
+                    if (parser) parser.setTripwireFired(true);
                     if (gdl) {
                         try {
                             gdl.kill();
@@ -103,15 +106,7 @@ function saveAndExit(exitCode) {
             const seen = new Set();
             
             for (const record of allRecords) {
-                let key;
-                if (record[0] === 2 && record[1] && record[1].tweet_id) {
-                    key = '2_' + record[1].tweet_id;
-                } else if (record[0] === 3 && record[1]) {
-                    key = '3_' + record[1]; // Media URL is unique
-                } else {
-                    key = JSON.stringify(record); // Fallback for unknown types
-                }
-                
+                const key = getRecordKey(record);
                 if (!seen.has(key)) {
                     seen.add(key);
                     combined.push(record);
@@ -133,74 +128,12 @@ function saveAndExit(exitCode) {
     }
 }
 
-let depth = 0;
-let inString = false;
-let escapeNext = false;
-let recordBuffer = "";
+parser = createStreamingParser((record) => {
+    processRecord(record);
+});
 
 function setupLineReader(inputStream) {
-    const rl = readline.createInterface({
-        input: inputStream,
-        terminal: false
-    });
-
-    rl.on('line', (line) => {
-        if (tripwireFired) return;
-        
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            
-            if (escapeNext) {
-                escapeNext = false;
-                if (depth >= 2) recordBuffer += char;
-                continue;
-            }
-            
-            if (char === '\\') {
-                escapeNext = true;
-                if (depth >= 2) recordBuffer += char;
-                continue;
-            }
-            
-            if (char === '"') {
-                inString = !inString;
-                if (depth >= 2) recordBuffer += char;
-                continue;
-            }
-            
-            if (!inString) {
-                if (char === '[') {
-                    depth++;
-                    if (depth >= 2) recordBuffer += char;
-                    continue;
-                }
-                if (char === ']') {
-                    if (depth >= 2) recordBuffer += char;
-                    depth--;
-                    if (depth === 1) {
-                        try {
-                            const record = JSON.parse(recordBuffer);
-                            processRecord(record);
-                        } catch (e) {
-                            // ignore malformed record
-                        }
-                        recordBuffer = "";
-                    }
-                    continue;
-                }
-            }
-            
-            if (depth >= 2) {
-                recordBuffer += char;
-            }
-        }
-        
-        if (depth >= 2) {
-            recordBuffer += "\n";
-        }
-    });
-
-    return rl;
+    return parser.setupInputStream(inputStream);
 }
 
 if (isSpawning) {

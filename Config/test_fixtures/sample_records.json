@@ -1,0 +1,39 @@
+[
+  [
+    2,
+    {
+      "tweet_id": 123456789,
+      "conversation_id": 123456789,
+      "retweet_id": 0,
+      "author": { "name": "testuser" },
+      "date": "2026-06-01 12:00:00",
+      "content": "Hello world"
+    }
+  ],
+  [
+    3,
+    "https://pbs.twimg.com/media/test_image.jpg",
+    {
+      "tweet_id": 123456789,
+      "type": "photo",
+      "extension": "jpg"
+    }
+  ],
+  {
+    "tweet_id": 987654321,
+    "conversation_id": 987654321,
+    "retweet_id": 12345,
+    "author": { "name": "otheruser" },
+    "date": "2026-06-02 12:00:00",
+    "content": "RT @someone: Hello"
+  },
+  {
+    "tweet_id": 987654321,
+    "url": "https://video.twimg.com/ext_tw_video/123/vid/mp4/test.mp4",
+    "type": "video",
+    "duration": 45.5
+  },
+  {
+    "unknown_key": "some_value"
+  }
+]

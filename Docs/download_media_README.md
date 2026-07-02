@@ -5,14 +5,15 @@ A highly robust, concurrency-enabled Node.js script designed to process raw JSON
 ## 🚀 Key Features
 
 - **Concurrent Processing:** Uses a worker pool architecture to download multiple files simultaneously, dramatically speeding up bulk archival.
-- **Smart Retries & Exponential Backoff:** Network failures are automatically retried up to 3 times with increasing delays to ensure maximum success rates.
+- **Smart Retries & Exponential Backoff:** Network downloads are powered by the centralized [download.js](file:///c:/Users/hello/Pictures/Gallery-Dl/Scripts/lib/download.js) module, which retries failures automatically using exponential backoff to maximize success.
 - **Flawless Resumption:** Generates a real-time `_media_map.json` for every account. If the script is halted, running it again will instantly skip all previously downloaded media and resume exactly where it left off!
-- **Bandwidth Limits (`--max-gb`)**: You can set a strict download size limit. Once the total downloaded media hits the limit (e.g., 20 GB), the script halts gracefully.
+- **Bandwidth Limits (`--max-gb`)**: You can set an approximate download size limit. Once the total downloaded media hits the limit (e.g., 20 GB), the script halts gracefully. *Note: this limit is best-effort due to concurrent workers downloading in parallel.*
 - **Advanced Exclusions:** By default, the script intelligently pre-processes the data to actively ignore media belonging to **Threads** and **Large Videos** (>= 30 seconds). These are managed by dedicated scripts elsewhere.
 - **CLI Filtering:** Download only videos (`-v`) or only images (`-i`).
 
 ## 📁 Directory Structure
 
+All directory locations are resolved dynamically using [paths.js](file:///c:/Users/hello/Pictures/Gallery-Dl/Scripts/lib/paths.js):
 - **Input Data:** `TweetData/RawData/` - Contains the source `.json` files to parse.
 - **Output Media:** `TweetData/Media/` - Downloaded files are organized into subfolders per account name.
 - **Mapping Files:** `TweetData/Media/Mappings/` - Stores the tracking JSON maps for the resume functionality.

@@ -16,6 +16,13 @@ def get_record_key(record):
             return '2_' + str(record[1]['tweet_id'])
         elif record[0] == 3 and isinstance(record[1], str):
             return '3_' + record[1]
+    elif isinstance(record, dict):
+        tweet_id = record.get('tweet_id') or record.get('id_str')
+        media_url = record.get('url') or record.get('media_url_https') or record.get('media_url')
+        if tweet_id and not media_url:
+            return '2_' + str(tweet_id)
+        elif media_url:
+            return '3_' + media_url
     return json.dumps(record)
 
 def merge_json_files(new_file, old_file, target_file):
@@ -59,49 +66,59 @@ def run_sync(json_path):
     sqlite_path = os.path.join(ACCOUNT_STATUS_DIR, f"{clean_username}_archive.sqlite3")
     
     try:
-        subprocess.run(["python", SYNC_SCRIPT, json_path, sqlite_path], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(["python", SYNC_SCRIPT, json_path, sqlite_path], check=False, capture_output=True, text=True)
+        if proc.returncode != 0:
+            print(f"[SYNC ERROR] sync_archive.py failed for {filename} (exit code {proc.returncode}):")
+            if proc.stderr:
+                print(proc.stderr.strip())
+            if proc.stdout:
+                print(proc.stdout.strip())
     except Exception as e:
         print(f"Failed to run sync script for {filename}: {e}")
 
-if not os.path.exists(NEW_RAW_DIR):
-    print(f"Folder not found: {NEW_RAW_DIR}")
-    exit(0)
+def main():
+    if not os.path.exists(NEW_RAW_DIR):
+        print(f"Folder not found: {NEW_RAW_DIR}")
+        exit(0)
 
-if not os.path.exists(RAW_DIR):
-    os.makedirs(RAW_DIR)
+    if not os.path.exists(RAW_DIR):
+        os.makedirs(RAW_DIR)
 
-print("Starting merge process. Files will NOT be deleted from NewRawData.")
-print("-" * 50)
+    print("Starting merge process. Files will NOT be deleted from NewRawData.")
+    print("-" * 50)
 
-merged_count = 0
-copied_count = 0
+    merged_count = 0
+    copied_count = 0
 
-for filename in os.listdir(NEW_RAW_DIR):
-    if not filename.endswith('_tweets.json'):
-        continue
+    for filename in os.listdir(NEW_RAW_DIR):
+        if not filename.endswith('_tweets.json'):
+            continue
+            
+        new_path = os.path.join(NEW_RAW_DIR, filename)
+        target_path = os.path.join(RAW_DIR, filename)
         
-    new_path = os.path.join(NEW_RAW_DIR, filename)
-    target_path = os.path.join(RAW_DIR, filename)
-    
-    if os.path.exists(target_path):
-        # Merge
-        print(f"Merging: {filename}...")
-        n_len, o_len, c_len = merge_json_files(new_path, target_path, target_path)
-        duplicates = (n_len + o_len) - c_len
-        print(f"  -> Added {n_len} records to {o_len} existing. Removed {duplicates} duplicates. New Total: {c_len}")
-        merged_count += 1
-    else:
-        # Copy
-        print(f"Copying unique file: {filename}...")
-        shutil.copy2(new_path, target_path)
-        copied_count += 1
-        
-    # Sync SQLite
-    run_sync(target_path)
+        if os.path.exists(target_path):
+            # Merge
+            print(f"Merging: {filename}...")
+            n_len, o_len, c_len = merge_json_files(new_path, target_path, target_path)
+            duplicates = (n_len + o_len) - c_len
+            print(f"  -> Added {n_len} records to {o_len} existing. Removed {duplicates} duplicates. New Total: {c_len}")
+            merged_count += 1
+        else:
+            # Copy
+            print(f"Copying unique file: {filename}...")
+            shutil.copy2(new_path, target_path)
+            copied_count += 1
+            
+        # Sync SQLite
+        run_sync(target_path)
 
-print("-" * 50)
-print(f"Process complete!")
-print(f"Merged {merged_count} overlapping files.")
-print(f"Copied {copied_count} unique files.")
-print("\nEverything has been successfully unified into the RawData folder.")
-print("The NewRawData folder has been left completely intact. You may review and delete it manually.")
+    print("-" * 50)
+    print(f"Process complete!")
+    print(f"Merged {merged_count} overlapping files.")
+    print(f"Copied {copied_count} unique files.")
+    print("\nEverything has been successfully unified into the RawData folder.")
+    print("The NewRawData folder has been left completely intact. You may review and delete it manually.")
+
+if __name__ == '__main__':
+    main()

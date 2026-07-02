@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
+const { parseRecord } = require('./lib/recordSchema');
+const { downloadWithRetry, getNormalizedUrl, constructFilename } = require('./lib/download');
+const { MEDIA_DOWNLOAD_DELAY_MS } = require('./lib/rateLimits');
 
 // CLI Flags
 const args = process.argv.slice(2);
@@ -29,8 +30,7 @@ const CONCURRENCY = 5; // How many concurrent downloads to run across the entire
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 2000; // Exponential backoff base delay
 
-const DIRECTORY = path.join(__dirname, '..', 'TweetData', 'NewRawData');
-const OUTPUT_DIR = path.join(__dirname, '..', 'TweetData', 'Media');
+const { NEW_RAW_DATA_DIR: DIRECTORY, MEDIA_DIR: OUTPUT_DIR } = require('./lib/paths');
 const MAPPING_DIR = path.join(OUTPUT_DIR, 'Mappings');
 
 if (!fs.existsSync(OUTPUT_DIR)) {
@@ -48,67 +48,9 @@ if (!fs.existsSync(DIRECTORY)) {
 
 // --- Utilities ---
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 function ensureDirectoryExists(dirPath) {
     if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
-    }
-}
-
-// Download a single file using a Promise
-function downloadFile(url, destPath) {
-    return new Promise((resolve, reject) => {
-        const client = url.startsWith('https') ? https : http;
-        
-        const req = client.get(url, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                // Handle redirects
-                return downloadFile(res.headers.location, destPath).then(resolve).catch(reject);
-            }
-            
-            if (res.statusCode !== 200) {
-                return reject(new Error(`Failed to get '${url}' (${res.statusCode})`));
-            }
-
-            const fileStream = fs.createWriteStream(destPath);
-            res.pipe(fileStream);
-
-            fileStream.on('finish', () => {
-                fileStream.close(resolve);
-            });
-            fileStream.on('error', (err) => {
-                fs.unlink(destPath, () => reject(err));
-            });
-        });
-
-        req.on('error', (err) => {
-            reject(err);
-        });
-
-        // Set timeout to prevent hanging connections
-        req.setTimeout(30000, () => {
-            req.abort();
-            reject(new Error(`Request timeout for ${url}`));
-        });
-    });
-}
-
-// Download with retries and exponential backoff
-async function downloadWithRetry(url, destPath, attempt = 1) {
-    try {
-        await downloadFile(url, destPath);
-        return true;
-    } catch (err) {
-        if (attempt <= MAX_RETRIES) {
-            const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-            console.log(`      [Retry] Attempt ${attempt} failed for ${path.basename(destPath)}: ${err.message}. Retrying in ${delay}ms...`);
-            await sleep(delay);
-            return downloadWithRetry(url, destPath, attempt + 1);
-        } else {
-            console.error(`      [Error] Final failure downloading ${url}: ${err.message}`);
-            return false;
-        }
     }
 }
 
@@ -145,11 +87,10 @@ async function processFile(filePath, workerId) {
     if (IGNORE_THREADS) {
         const convoMap = new Map();
         for (const record of records) {
-            const dataObj = Array.isArray(record) ? (record[0] === 2 ? record[1] : (record[0] === 3 ? record[2] : null)) : record;
-            if (dataObj && dataObj.conversation_id && (dataObj.tweet_id || dataObj.id_str)) {
-                const tId = dataObj.tweet_id || dataObj.id_str;
-                if (!convoMap.has(dataObj.conversation_id)) convoMap.set(dataObj.conversation_id, new Set());
-                convoMap.get(dataObj.conversation_id).add(tId);
+            const parsed = parseRecord(record);
+            if (parsed.convoId && parsed.tweetId) {
+                if (!convoMap.has(parsed.convoId)) convoMap.set(parsed.convoId, new Set());
+                convoMap.get(parsed.convoId).add(parsed.tweetId);
             }
         }
         for (const [convoId, tweetIds] of convoMap.entries()) {
@@ -160,41 +101,19 @@ async function processFile(filePath, workerId) {
 
     // Filter media records based on CLI flags
     const mediaRecords = records.filter(record => {
-        const dataObj = Array.isArray(record) ? (record[0] === 2 ? record[1] : (record[0] === 3 ? record[2] : null)) : record;
+        const parsed = parseRecord(record);
         
-        if (IGNORE_THREADS && dataObj && dataObj.conversation_id && threadConvoIds.has(dataObj.conversation_id)) {
+        if (IGNORE_THREADS && parsed.convoId && threadConvoIds.has(parsed.convoId)) {
             return false; // Skip threads
         }
 
-        const isMediaRecord = (Array.isArray(record) && record[0] === 3) || 
-                              (record.type === 'photo' || record.type === 'video' || record.type === 'animated_gif');
-        
-        if (!isMediaRecord) return false;
+        if (!parsed.isMedia) return false;
 
-        let type = null;
-        let duration = null;
+        const isVideo = parsed.type === 'video' || parsed.type === 'animated_gif';
+        const isImage = parsed.type === 'photo';
 
-        if (Array.isArray(record)) {
-            type = record[2] ? record[2].type : null;
-            duration = record[2] ? record[2].duration : null;
-        } else {
-            type = record.type;
-            duration = record.duration;
-        }
-
-        if (!type) {
-             const url = Array.isArray(record) ? record[1] : (record.url || record.media_url);
-             if (url && typeof url === 'string') {
-                 if (url.includes('.mp4') || url.includes('video.twimg.com')) type = 'video';
-                 else type = 'photo';
-             }
-        }
-
-        const isVideo = type === 'video' || type === 'animated_gif';
-        const isImage = type === 'photo';
-
-        if (IGNORE_LARGE_VIDEOS && isVideo && duration !== null && duration !== undefined) {
-            const durationSec = parseFloat(duration);
+        if (IGNORE_LARGE_VIDEOS && isVideo && parsed.duration !== null && parsed.duration !== undefined) {
+            const durationSec = parseFloat(parsed.duration);
             if (!isNaN(durationSec) && durationSec >= 1800) {
                 return false; // Skip large videos >= 30m (1800s)
             }
@@ -233,47 +152,15 @@ async function processFile(filePath, workerId) {
         
         const record = mediaRecords[i];
         
-        // Extract media URL depending on structure
-        let mediaUrl = null;
-        let tweetId = null;
-        let dateStr = '';
-
-        if (Array.isArray(record)) {
-            // gallery-dl format [3, mediaUrl, mediaData]
-            mediaUrl = record[1];
-            const mediaData = record[2] || {};
-            tweetId = mediaData.tweet_id || mediaData.id_str || '';
-            dateStr = mediaData.date || '';
-        } else {
-            // Object format
-            tweetId = record.tweet_id || record.id_str;
-            mediaUrl = record.url || record.media_url_https || record.media_url;
-            dateStr = record.date || record.created_at || '';
-        }
+        const parsed = parseRecord(record);
+        let mediaUrl = parsed.mediaUrl;
+        let tweetId = parsed.tweetId || '';
+        let dateStr = parsed.date || '';
 
         if (!mediaUrl) continue;
 
-        let formattedDate = '';
-        if (dateStr) {
-            // Handle formats like "YYYY-MM-DD HH:MM:SS" or ISO strings
-            const firstPart = dateStr.split('T')[0].split(' ')[0];
-            formattedDate = firstPart.replace(/-/g, '_') + '_';
-        }
-
-        // Upgrade image URL to high quality
-        if (mediaUrl.includes('pbs.twimg.com/media/')) {
-            const urlObj = new URL(mediaUrl);
-            urlObj.searchParams.delete('name');
-            urlObj.searchParams.set('name', 'orig');
-            mediaUrl = urlObj.toString();
-        }
-
-        // Clean query strings to get a valid filename
-        const cleanUrl = mediaUrl.split('?')[0];
-        const ext = path.extname(cleanUrl) || '.jpg';
-        
-        // Construct filename incorporating date and tweet ID for tracking
-        const localFileName = `${formattedDate}${tweetId}_${path.basename(cleanUrl, ext)}${ext}`;
+        mediaUrl = getNormalizedUrl(mediaUrl);
+        const localFileName = constructFilename(mediaUrl, tweetId, dateStr);
         const destPath = path.join(accountMediaDir, localFileName);
         const relativePath = `${accountName}/${localFileName}`;
 
@@ -299,6 +186,7 @@ async function processFile(filePath, workerId) {
             // Update mapping file progressively
             fs.writeFileSync(mappingFilePath, JSON.stringify(mapping, null, 2));
 
+            // Note: size limit check is approximate/best-effort due to concurrent workers downloading in parallel.
             // Check file size and update global counter
             if (MAX_BYTES) {
                 try {
@@ -318,7 +206,7 @@ async function processFile(filePath, workerId) {
         }
 
         // Brief delay between downloads for rate-limiting (0.5s per doc limits)
-        await sleep(500);
+        await sleep(MEDIA_DOWNLOAD_DELAY_MS);
     }
 
     console.log(`[Worker ${workerId}] Finished ${fileName}. Downloaded: ${downloadedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);

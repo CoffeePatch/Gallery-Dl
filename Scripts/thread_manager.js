@@ -4,23 +4,28 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const esbuild = require('esbuild');
 const { spawn, execSync } = require('child_process');
+const { downloadWithRetry } = require('./lib/download');
+const {
+    THREAD_NAV_LOAD_DELAY_MS,
+    THREAD_PACING_MIN_MS,
+    THREAD_PACING_MAX_MS
+} = require('./lib/rateLimits');
 
 puppeteer.use(StealthPlugin());
 
 // --- Paths Config ---
-const ROOT_DIR = path.resolve(__dirname, '..');
-const THREADS_OUTPUT_DIR = path.join(ROOT_DIR, 'TweetData', 'Threads');
-const THREADS_RAW_DIR = path.join(ROOT_DIR, 'TweetData', 'ThreadsRaw');
-const THREADS_MEDIA_DIR = path.join(ROOT_DIR, 'TweetData', 'ThreadMedia');
-
-const COMPLETED_THREADS_TXT = path.join(ROOT_DIR, 'Config', 'Queues', 'completed_threads.txt');
-const FAILED_THREADS_TXT = path.join(ROOT_DIR, 'Config', 'Queues', 'failed_threads.txt');
-
-const URLS_THREADREADER = path.join(ROOT_DIR, 'Config', 'Users', 'urls_threadreader.txt');
-const URLS_TWITTERTHREAD = path.join(ROOT_DIR, 'Config', 'Users', 'urls_twitterthread.txt');
-const COOKIES_PATH = path.join(ROOT_DIR, 'Config', 'Cookies', 'cookies.txt');
-
-const BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
+const {
+    ROOT_DIR,
+    THREADS_OUTPUT_DIR,
+    THREADS_RAW_DIR,
+    THREADS_MEDIA_DIR,
+    COMPLETED_THREADS: COMPLETED_THREADS_TXT,
+    FAILED_THREADS: FAILED_THREADS_TXT,
+    URLS_THREADREADER,
+    URLS_TWITTERTHREAD,
+    COOKIES_FILE: COOKIES_PATH,
+    GRAPHQL_PAYLOAD_CONFIG
+} = require('./lib/paths');
 
 // Ensure required directories exist
 [THREADS_OUTPUT_DIR, THREADS_RAW_DIR, THREADS_MEDIA_DIR, path.dirname(COMPLETED_THREADS_TXT)].forEach(dir => {
@@ -115,8 +120,11 @@ function loadNetscapeCookiesForPuppeteer(cookiesPath) {
     return cookies;
 }
 
-async function getQueryId(cookieString) {
-    const fallback = "jd3V43oDY9cY7obs1YMfbQ";
+async function getApiCredentials(cookieString) {
+    const fallbackQueryId = "jd3V43oDY9cY7obs1YMfbQ";
+    let queryId = fallbackQueryId;
+    let bearerToken = null;
+
     try {
         const res = await fetch("https://x.com/", {
             headers: { 
@@ -133,13 +141,17 @@ async function getQueryId(cookieString) {
                 signal: AbortSignal.timeout(20000)
             });
             const jsText = await jsRes.text();
+            
             const qMatch = jsText.match(/queryId:"([^"]+)",operationName:"TweetDetail"/);
-            if (qMatch) return qMatch[1];
+            if (qMatch) queryId = qMatch[1];
+            
+            const bearerMatch = jsText.match(/Bearer (AAAAAAAAAAAAAAAAAAAAA[^"']+)/);
+            if (bearerMatch) bearerToken = bearerMatch[1];
         }
     } catch (e) {
-        console.warn("[API] Failed to dynamically fetch query ID, using fallback:", e.message);
+        console.warn("[API] Failed to dynamically fetch API credentials, using fallback query ID:", e.message);
     }
-    return fallback;
+    return { queryId, bearerToken };
 }
 
 // ============================================================
@@ -275,16 +287,7 @@ async function getSingleFileBundle() {
 // ============================================================
 async function downloadFile(urlStr, dest) {
     if (fs.existsSync(dest)) return true; 
-    try {
-        const res = await fetch(urlStr);
-        if (!res.ok) throw new Error(`Status: ${res.status}`);
-        const buffer = await res.arrayBuffer();
-        fs.writeFileSync(dest, Buffer.from(buffer));
-        return true;
-    } catch (e) {
-        console.error(`  [Download Error] Failed: ${urlStr} (${e.message})`);
-        return false;
-    }
+    return downloadWithRetry(urlStr, dest);
 }
 
 async function handleMediaItem(m, threadMediaDir) {
@@ -362,9 +365,21 @@ function generateOfflineHtmlTimeline(jsonFilePath) {
 // ============================================================
 // STRATEGY A: TWITTER API FETCH
 // ============================================================
-async function executeStrategyAPI(tweetId, cookieString, ct0, queryId) {
+async function executeStrategyAPI(tweetId, cookieString, ct0, queryId, bearerToken) {
+    if (!bearerToken) {
+        console.warn(`[API Warning] Missing bearer token. Cannot use API strategy.`);
+        return null;
+    }
+    let payload;
+    try {
+        payload = JSON.parse(fs.readFileSync(GRAPHQL_PAYLOAD_CONFIG, 'utf8'));
+    } catch (e) {
+        console.error(`[API Error] Failed to read or parse GraphQL payload configuration: ${e.message}`);
+        return null;
+    }
+
     const headers = {
-        "authorization": `Bearer ${BEARER_TOKEN}`,
+        "authorization": `Bearer ${bearerToken}`,
         "x-csrf-token": ct0,
         "cookie": cookieString,
         "x-twitter-active-user": "yes",
@@ -374,49 +389,12 @@ async function executeStrategyAPI(tweetId, cookieString, ct0, queryId) {
     };
 
     const variables = {
-        "focalTweetId": tweetId,
-        "with_rux_injections": false,
-        "includePromotedContent": true,
-        "withCommunity": true,
-        "withQuickPromoteEligibilityTweetFields": true,
-        "withBirdwatchNotes": true,
-        "withVoice": true,
-        "withV2Timeline": true
+        ...payload.variables,
+        "focalTweetId": tweetId
     };
 
-    const features = {
-        "rweb_tipjar_consumption_enabled": true,
-        "responsive_web_graphql_exclude_directive_enabled": true,
-        "verified_phone_label_enabled": false,
-        "creator_subscriptions_tweet_preview_api_enabled": true,
-        "responsive_web_graphql_timeline_navigation_enabled": true,
-        "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
-        "communities_web_enable_tweet_community_results_fetch": true,
-        "c9s_tweet_anatomy_moderator_badge_enabled": true,
-        "articles_preview_enabled": true,
-        "tweetypie_unmention_optimization_enabled": true,
-        "responsive_web_edit_tweet_api_enabled": true,
-        "graphql_is_translatable_rweb_tweet_is_translatable_enabled": true,
-        "view_counts_everywhere_api_enabled": true,
-        "longform_notetweets_consumption_enabled": true,
-        "responsive_web_twitter_article_tweet_consumption_enabled": true,
-        "tweet_awards_web_tipping_enabled": false,
-        "creator_subscriptions_quote_tweet_preview_enabled": false,
-        "freedom_of_speech_not_reach_fetch_enabled": true,
-        "standardized_nudges_misinfo": true,
-        "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
-        "rweb_video_timestamps_enabled": true,
-        "longform_notetweets_rich_text_read_enabled": true,
-        "longform_notetweets_inline_media_enabled": true,
-        "responsive_web_enhance_cards_enabled": false
-    };
-
-    const fieldToggles = {
-        "withArticleRichContentState": true,
-        "withArticlePlainText": false,
-        "withGrokAnalyze": false,
-        "withDisallowedEnvFaResponsiveWebTreatment": false
-    };
+    const features = payload.features;
+    const fieldToggles = payload.fieldToggles;
 
     const allRawEntries = [];
     let cursor = null;
@@ -526,7 +504,7 @@ async function executeStrategyTwitterBrowser(browser, tweetId, url) {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
         
         // Wait for page load / authentication confirmation
-        await wait(5000);
+        await wait(THREAD_NAV_LOAD_DELAY_MS);
 
         // Scroll
         console.log("[Browser] Scrolling thread timeline...");
@@ -680,7 +658,7 @@ async function main() {
         process.exit(1);
     }
     const cookieString = Object.entries(cookieObj).map(([k, v]) => `${k}=${v}`).join('; ');
-    const queryId = await getQueryId(cookieString);
+    const { queryId, bearerToken } = await getApiCredentials(cookieString);
 
     // Read Queue Inputs
     let rawUrls = [];
@@ -759,7 +737,7 @@ async function main() {
         } else {
             // Twitter Thread
             // Try Strategy A (API)
-            const rawJsonPath = await executeStrategyAPI(threadId, cookieString, ct0, queryId);
+            const rawJsonPath = await executeStrategyAPI(threadId, cookieString, ct0, queryId, bearerToken);
             if (rawJsonPath) {
                 console.log(`[API Success] JSON fetched successfully.`);
                 // Trigger media download
@@ -793,7 +771,7 @@ async function main() {
 
         // Random delay 4-8s between threads
         if (i < queue.length - 1) {
-            const delay = Math.floor(Math.random() * 4000) + 4000;
+            const delay = THREAD_PACING_MIN_MS + Math.floor(Math.random() * (THREAD_PACING_MAX_MS - THREAD_PACING_MIN_MS));
             console.log(`Delaying ${delay}ms before next thread...`);
             await wait(delay);
         }

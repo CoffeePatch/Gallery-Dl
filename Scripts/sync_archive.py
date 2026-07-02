@@ -2,13 +2,25 @@ import sys
 import json
 import sqlite3
 import os
+import argparse
 
-if len(sys.argv) < 3:
-    print("Usage: python sync_archive.py <jsonTargetFile> <userArchiveFile>")
+parser = argparse.ArgumentParser(description="Sync tweet IDs from gallery-dl JSON into a SQLite archive.")
+parser.add_argument("json_file", help="Path to the gallery-dl JSON file (must end with .json)")
+parser.add_argument("db_file", help="Path to the user SQLite archive file (must end with .sqlite3 or .db)")
+
+args = parser.parse_args()
+
+json_file = args.json_file
+db_file = args.db_file
+
+# Pre-flight validation
+if not json_file.lower().endswith('.json'):
+    print("[SYNC ERROR] JSON file path must end with .json", file=sys.stderr)
     sys.exit(1)
 
-json_file = sys.argv[1]
-db_file = sys.argv[2]
+if not (db_file.lower().endswith('.sqlite3') or db_file.lower().endswith('.db')):
+    print("[SYNC ERROR] DB file path must end with .sqlite3 or .db", file=sys.stderr)
+    sys.exit(1)
 
 if not os.path.exists(json_file):
     print(f"[SYNC] JSON file not found: {json_file}")

@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { parseRecord } = require('./lib/recordSchema');
+const { RAW_DATA_DIR, MEDIA_DIR, TWEET_DATA_DIR } = require('./lib/paths');
 
 const cssTemplate = `
 body {
@@ -297,6 +299,67 @@ const additionalCss = `
     font-size: 13px;
     font-weight: 700;
 }
+const PAGE_STYLE = cssTemplate + additionalCss;
+
+const PAGE_SCRIPT = `
+function handleImageError(img) {
+    if (img.dataset.local1 && img.src !== img.dataset.local1 && !img.dataset.triedLocal1) {
+        img.dataset.triedLocal1 = "true";
+        img.src = img.dataset.local1;
+    } else if (img.dataset.local2 && img.src !== img.dataset.local2 && !img.dataset.triedLocal2) {
+        img.dataset.triedLocal2 = "true";
+        img.src = img.dataset.local2;
+    } else {
+        img.onerror = null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Video poster fallback
+    document.querySelectorAll('video').forEach(video => {
+        const poster = video.getAttribute('poster');
+        if (poster) {
+            const img = new Image();
+            img.src = poster;
+            img.onerror = () => {
+                const local1 = video.getAttribute('data-poster-local1');
+                if (local1) {
+                    const imgLocal1 = new Image();
+                    imgLocal1.src = local1;
+                    imgLocal1.onload = () => {
+                        video.setAttribute('poster', local1);
+                    };
+                    imgLocal1.onerror = () => {
+                        const local2 = video.getAttribute('data-poster-local2');
+                        if (local2) {
+                            video.setAttribute('poster', local2);
+                        }
+                    };
+                }
+            };
+        }
+    });
+
+    // Video IntersectionObserver for lazy loading and scrolling play/pause
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            const video = entry.target;
+            if (entry.isIntersecting) {
+                if (video.preload === 'none') {
+                    video.preload = 'metadata';
+                }
+            } else {
+                if (!video.paused) {
+                    video.pause();
+                }
+            }
+        });
+    }, { rootMargin: '100px 0px', threshold: 0.01 });
+
+    document.querySelectorAll('video').forEach(video => {
+        observer.observe(video);
+    });
+});
 `;
 
 function getNormalizedUrl(url) {
@@ -480,7 +543,7 @@ function generateSingleFileHtml(tweets, mediaByTweet, mediaMap, outHtmlPath, tar
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${targetAccount ? targetAccount.nick : 'Timeline'}</title>
-    <style>${cssTemplate + additionalCss}</style>
+    <style>${PAGE_STYLE}</style>
 </head>
 <body>
     <div class="container">
@@ -496,66 +559,7 @@ function generateSingleFileHtml(tweets, mediaByTweet, mediaMap, outHtmlPath, tar
 
     html += `
     </div>
-    <script>
-    function handleImageError(img) {
-        if (img.dataset.local1 && img.src !== img.dataset.local1 && !img.dataset.triedLocal1) {
-            img.dataset.triedLocal1 = "true";
-            img.src = img.dataset.local1;
-        } else if (img.dataset.local2 && img.src !== img.dataset.local2 && !img.dataset.triedLocal2) {
-            img.dataset.triedLocal2 = "true";
-            img.src = img.dataset.local2;
-        } else {
-            img.onerror = null;
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        // Video poster fallback
-        document.querySelectorAll('video').forEach(video => {
-            const poster = video.getAttribute('poster');
-            if (poster) {
-                const img = new Image();
-                img.src = poster;
-                img.onerror = () => {
-                    const local1 = video.getAttribute('data-poster-local1');
-                    if (local1) {
-                        const imgLocal1 = new Image();
-                        imgLocal1.src = local1;
-                        imgLocal1.onload = () => {
-                            video.setAttribute('poster', local1);
-                        };
-                        imgLocal1.onerror = () => {
-                            const local2 = video.getAttribute('data-poster-local2');
-                            if (local2) {
-                                video.setAttribute('poster', local2);
-                            }
-                        };
-                    }
-                };
-            }
-        });
-
-        // Video IntersectionObserver for lazy loading and scrolling play/pause
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                const video = entry.target;
-                if (entry.isIntersecting) {
-                    if (video.preload === 'none') {
-                        video.preload = 'metadata';
-                    }
-                } else {
-                    if (!video.paused) {
-                        video.pause();
-                    }
-                }
-            });
-        }, { rootMargin: '100px 0px', threshold: 0.01 });
-
-        document.querySelectorAll('video').forEach(video => {
-            observer.observe(video);
-        });
-    });
-    </script>
+    <script>${PAGE_SCRIPT}</script>
 </body>
 </html>`;
 
@@ -587,7 +591,7 @@ function generateIndexPage(pages, outPaginatedDir, targetAccount, totalTweets) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${targetAccount ? targetAccount.nick : 'Archive'} - Timeline Index</title>
-    <style>${cssTemplate + additionalCss}</style>
+    <style>${PAGE_STYLE}</style>
 </head>
 <body>
     <div class="index-container">
@@ -619,7 +623,7 @@ function generatePaginatedTimeline(tweets, mediaByTweet, mediaMap, outPaginatedD
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${targetAccount ? targetAccount.nick : 'Timeline'} - Page ${pageNum}</title>
-    <style>${cssTemplate + additionalCss}</style>
+    <style>${PAGE_STYLE}</style>
 </head>
 <body>
     <div class="container">
@@ -631,66 +635,7 @@ function generatePaginatedTimeline(tweets, mediaByTweet, mediaMap, outPaginatedD
 
     const scaffoldingFooter = `
     </div>
-    <script>
-    function handleImageError(img) {
-        if (img.dataset.local1 && img.src !== img.dataset.local1 && !img.dataset.triedLocal1) {
-            img.dataset.triedLocal1 = "true";
-            img.src = img.dataset.local1;
-        } else if (img.dataset.local2 && img.src !== img.dataset.local2 && !img.dataset.triedLocal2) {
-            img.dataset.triedLocal2 = "true";
-            img.src = img.dataset.local2;
-        } else {
-            img.onerror = null;
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        // Video poster fallback
-        document.querySelectorAll('video').forEach(video => {
-            const poster = video.getAttribute('poster');
-            if (poster) {
-                const img = new Image();
-                img.src = poster;
-                img.onerror = () => {
-                    const local1 = video.getAttribute('data-poster-local1');
-                    if (local1) {
-                        const imgLocal1 = new Image();
-                        imgLocal1.src = local1;
-                        imgLocal1.onload = () => {
-                            video.setAttribute('poster', local1);
-                        };
-                        imgLocal1.onerror = () => {
-                            const local2 = video.getAttribute('data-poster-local2');
-                            if (local2) {
-                                video.setAttribute('poster', local2);
-                            }
-                        };
-                    }
-                };
-            }
-        });
-
-        // Video IntersectionObserver for lazy loading and scrolling play/pause
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                const video = entry.target;
-                if (entry.isIntersecting) {
-                    if (video.preload === 'none') {
-                        video.preload = 'metadata';
-                    }
-                } else {
-                    if (!video.paused) {
-                        video.pause();
-                    }
-                }
-            });
-        }, { rootMargin: '100px 0px', threshold: 0.01 });
-
-        document.querySelectorAll('video').forEach(video => {
-            observer.observe(video);
-        });
-    });
-    </script>
+    <script>${PAGE_SCRIPT}</script>
 </body>
 </html>`;
 
@@ -772,25 +717,27 @@ function processFile(filePath, outHtmlPath, outPaginatedDir, options) {
     let targetAccount = null;
 
     records.forEach(record => {
-        const type = record[0];
-        if (type === 2) {
-            tweets.push(record[1]);
-            if (!targetAccount && record[1].user && record[1].user.name) {
-                targetAccount = record[1].user;
+        const parsed = parseRecord(record);
+        if (parsed.isLegacy) {
+            tweets.push(parsed.dataObj);
+            if (!targetAccount && parsed.dataObj.user && parsed.dataObj.user.name) {
+                targetAccount = parsed.dataObj.user;
             }
-        } else if (type === 3) {
-            const url = record[1];
-            const meta = record[2];
-            const tid = meta.tweet_id;
-            if (!mediaByTweet[tid]) mediaByTweet[tid] = [];
-            mediaByTweet[tid].push({ url, meta });
+        } else if (parsed.isMedia) {
+            const url = parsed.mediaUrl;
+            const meta = parsed.dataObj;
+            const tid = parsed.tweetId;
+            if (tid) {
+                if (!mediaByTweet[tid]) mediaByTweet[tid] = [];
+                mediaByTweet[tid].push({ url, meta });
+            }
         }
     });
 
     tweets.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const mappingFileName = `${path.basename(filePath, '.json')}_media_map.json`;
-    const mappingDir = path.join(__dirname, '..', 'TweetData', 'Media', 'Mappings');
+    const mappingDir = path.join(MEDIA_DIR, 'Mappings');
     const mappingPath = path.join(mappingDir, mappingFileName);
     
     let mediaMap = {};
@@ -836,7 +783,7 @@ function main() {
         if (nextArg && !nextArg.startsWith('--')) {
             inputPath = nextArg;
         } else {
-            inputPath = path.join(__dirname, '..', 'TweetData', 'RawData');
+            inputPath = RAW_DATA_DIR;
         }
     } else {
         for (let i = 0; i < args.length; i++) {
@@ -862,7 +809,7 @@ function main() {
     };
 
     if (isBatch) {
-        const outDir = path.join(__dirname, '..', 'TweetData', 'TimeLineOutput');
+        const outDir = path.join(TWEET_DATA_DIR, 'TimeLineOutput');
         if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
         }

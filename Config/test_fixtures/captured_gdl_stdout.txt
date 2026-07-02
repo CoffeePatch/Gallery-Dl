@@ -1,0 +1,54 @@
+[
+  [
+    2,
+    {
+      "tweet_id": 180123456789,
+      "category": "twitter",
+      "subcategory": "tweets",
+      "date": "2026-06-13 07:34:00",
+      "content": "Let's test this streaming parser with real output!",
+      "favorite_count": 10,
+      "retweet_count": 2,
+      "reply_count": 1,
+      "quote_count": 0,
+      "bookmark_count": 1,
+      "view_count": 120,
+      "lang": "en",
+      "conversation_id": 180123456789,
+      "sensitive": null,
+      "sensitive_flags": null,
+      "source": "Twitter Web App",
+      "source_id": 0,
+      "retweet_id": 0,
+      "date_original": "2026-06-13 07:34:00",
+      "author": {
+        "id": 12345,
+        "name": "tester",
+        "nick": "Tester Nick",
+        "description": "Just testing things"
+      },
+      "user": {
+        "id": 12345,
+        "name": "tester"
+      }
+    }
+  ],
+  [
+    3,
+    "https://pbs.twimg.com/media/E_xyz123.jpg",
+    {
+      "tweet_id": 180123456789,
+      "type": "photo",
+      "extension": "jpg",
+      "filename": "E_xyz123",
+      "width": 1200,
+      "height": 800,
+      "num": 1,
+      "content": "Let's test this streaming parser with real output!",
+      "author": {
+        "id": 12345,
+        "name": "tester"
+      }
+    }
+  ]
+]
