@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parseRecord } = require('./lib/recordSchema');
-const { downloadWithRetry, getNormalizedUrl, constructFilename } = require('./lib/download');
+const { downloadWithRetry, getBulkDownloadUrl, constructFilename } = require('./lib/download');
 const { MEDIA_DOWNLOAD_DELAY_MS } = require('./lib/rateLimits');
 
 // CLI Flags
@@ -159,7 +159,7 @@ async function processFile(filePath, workerId) {
 
         if (!mediaUrl) continue;
 
-        mediaUrl = getNormalizedUrl(mediaUrl);
+        mediaUrl = getBulkDownloadUrl(mediaUrl);
         const localFileName = constructFilename(mediaUrl, tweetId, dateStr);
         const destPath = path.join(accountMediaDir, localFileName);
         const relativePath = `${accountName}/${localFileName}`;

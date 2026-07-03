@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const esbuild = require('esbuild');
 const { spawn, execSync } = require('child_process');
-const { downloadWithRetry } = require('./lib/download');
+const { downloadWithRetry, getLosslessSnapshotUrl } = require('./lib/download');
 const {
     THREAD_NAV_LOAD_DELAY_MS,
     THREAD_PACING_MIN_MS,
@@ -240,22 +240,13 @@ async function waitForImagesToLoad(page) {
 
 // Upgrade X images to uncompressed formats
 async function upgradeImagesToHD(page) {
-    await page.evaluate(() => {
+    const fnStr = getLosslessSnapshotUrl.toString();
+    await page.evaluate((fnStr) => {
+        const rewriteUrl = new Function(`return (${fnStr})`)();
         const sources = Array.from(document.querySelectorAll('picture source'));
         for (const source of sources) source.remove();
 
         const images = Array.from(document.querySelectorAll('img'));
-        const rewriteUrl = (urlStr) => {
-            if (!urlStr || !urlStr.includes('pbs.twimg.com/media/')) return urlStr;
-            try {
-                const url = new URL(urlStr);
-                url.searchParams.delete('name');
-                url.searchParams.set('format', 'png');
-                return url.toString();
-            } catch (e) {
-                return urlStr;
-            }
-        };
 
         for (const img of images) {
             const src = img.getAttribute('src');
@@ -265,7 +256,7 @@ async function upgradeImagesToHD(page) {
             if (dataSrc) img.setAttribute('data-src', rewriteUrl(dataSrc));
             if (img.getAttribute('srcset')) img.removeAttribute('srcset');
         }
-    });
+    }, fnStr);
 }
 
 let singleFileBundle = null;

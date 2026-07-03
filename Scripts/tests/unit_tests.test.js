@@ -5,7 +5,7 @@ const path = require('path');
 const { parseRecord, getRecordKey } = require('../lib/recordSchema');
 const { parseHandle } = require('../lib/accountChecker');
 const { createStreamingParser } = require('../lib/streamingParser');
-const { getNormalizedUrl, constructFilename } = require('../lib/download');
+const { getBulkDownloadUrl, getLosslessSnapshotUrl, constructFilename } = require('../lib/download');
 
 test('recordSchema - parseRecord & getRecordKey', (t) => {
     // Array Type 2
@@ -144,11 +144,18 @@ test('streamingParser - processLine & golden-file mock stream', (t) => {
     assert.strictEqual(goldenRecords[1][1], "https://pbs.twimg.com/media/E_xyz123.jpg");
 });
 
-test('download - getNormalizedUrl', (t) => {
-    assert.strictEqual(getNormalizedUrl("https://pbs.twimg.com/media/xyz.jpg?name=medium"), "https://pbs.twimg.com/media/xyz.jpg?name=orig");
-    assert.strictEqual(getNormalizedUrl("https://example.com/image.png"), "https://example.com/image.png");
-    assert.strictEqual(getNormalizedUrl(""), "");
-    assert.strictEqual(getNormalizedUrl(null), "");
+test('download - getBulkDownloadUrl', (t) => {
+    assert.strictEqual(getBulkDownloadUrl("https://pbs.twimg.com/media/xyz.jpg?name=medium"), "https://pbs.twimg.com/media/xyz.jpg?name=orig");
+    assert.strictEqual(getBulkDownloadUrl("https://example.com/image.png"), "https://example.com/image.png");
+    assert.strictEqual(getBulkDownloadUrl(""), "");
+    assert.strictEqual(getBulkDownloadUrl(null), "");
+});
+
+test('download - getLosslessSnapshotUrl', (t) => {
+    assert.strictEqual(getLosslessSnapshotUrl("https://pbs.twimg.com/media/xyz.jpg?name=medium"), "https://pbs.twimg.com/media/xyz.jpg?format=png");
+    assert.strictEqual(getLosslessSnapshotUrl("https://example.com/image.png"), "https://example.com/image.png");
+    assert.strictEqual(getLosslessSnapshotUrl(""), "");
+    assert.strictEqual(getLosslessSnapshotUrl(null), "");
 });
 
 test('download - constructFilename', (t) => {

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseRecord } = require('./lib/recordSchema');
 const { RAW_DATA_DIR, MEDIA_DIR, TWEET_DATA_DIR } = require('./lib/paths');
+const { getBulkDownloadUrl } = require('./lib/download');
 
 const cssTemplate = `
 body {
@@ -362,19 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 `;
 
-function getNormalizedUrl(url) {
-    if (url && url.includes('pbs.twimg.com/media/')) {
-        try {
-            const urlObj = new URL(url);
-            urlObj.searchParams.delete('name');
-            urlObj.searchParams.set('name', 'orig');
-            return urlObj.toString();
-        } catch (e) {
-            return url;
-        }
-    }
-    return url;
-}
 
 function getMediaPaths(mappedPath, outDir) {
     const mediaDir = path.join(__dirname, '..', 'TweetData', 'Media');
@@ -385,7 +373,7 @@ function getMediaPaths(mappedPath, outDir) {
 }
 
 function buildImageHtml(img, outDir, mediaMap) {
-    const normUrl = getNormalizedUrl(img.url);
+    const normUrl = getBulkDownloadUrl(img.url);
     const mappedPath = mediaMap[normUrl];
     const webUrl = img.url;
     
@@ -400,7 +388,7 @@ function buildImageHtml(img, outDir, mediaMap) {
 }
 
 function buildImageBase64Html(img, mediaMap, outDir) {
-    const normUrl = getNormalizedUrl(img.url);
+    const normUrl = getBulkDownloadUrl(img.url);
     const mappedPath = mediaMap[normUrl];
     const webUrl = img.url;
     
@@ -427,7 +415,7 @@ function buildImageBase64Html(img, mediaMap, outDir) {
 }
 
 function buildVideoHtml(video, outDir, mediaMap) {
-    const normUrl = getNormalizedUrl(video.url);
+    const normUrl = getBulkDownloadUrl(video.url);
     const mappedPath = mediaMap[normUrl];
     const webUrl = video.url;
     const posterUrl = webUrl.replace('.mp4', '.jpg');

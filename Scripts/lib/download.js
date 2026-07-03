@@ -72,7 +72,7 @@ async function downloadWithRetry(url, destPath, options = {}) {
     }
 }
 
-function getNormalizedUrl(mediaUrl) {
+function getBulkDownloadUrl(mediaUrl) {
     if (!mediaUrl) return '';
     let url = mediaUrl;
     if (url.includes('pbs.twimg.com/media/')) {
@@ -80,6 +80,23 @@ function getNormalizedUrl(mediaUrl) {
             const urlObj = new URL(url);
             urlObj.searchParams.delete('name');
             urlObj.searchParams.set('name', 'orig');
+            url = urlObj.toString();
+        } catch (e) {
+            // ignore
+        }
+    }
+    return url;
+}
+
+// must stay browser-safe: no Node built-ins (used in page.evaluate)
+function getLosslessSnapshotUrl(mediaUrl) {
+    if (!mediaUrl) return '';
+    let url = mediaUrl;
+    if (url.includes('pbs.twimg.com/media/')) {
+        try {
+            const urlObj = new URL(url);
+            urlObj.searchParams.delete('name');
+            urlObj.searchParams.set('format', 'png');
             url = urlObj.toString();
         } catch (e) {
             // ignore
@@ -104,6 +121,7 @@ function constructFilename(mediaUrl, tweetId = '', dateStr = '') {
 module.exports = {
     downloadFile,
     downloadWithRetry,
-    getNormalizedUrl,
+    getBulkDownloadUrl,
+    getLosslessSnapshotUrl,
     constructFilename
 };
