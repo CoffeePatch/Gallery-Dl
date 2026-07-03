@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const esbuild = require('esbuild');
 const { spawn, execSync } = require('child_process');
-const { downloadWithRetry, getLosslessSnapshotUrl } = require('./lib/download');
+const { downloadWithRetry, getLosslessSnapshotUrl, getBulkDownloadUrl } = require('./lib/download');
 const {
     THREAD_NAV_LOAD_DELAY_MS,
     THREAD_PACING_MIN_MS,
@@ -283,7 +283,7 @@ async function downloadFile(urlStr, dest) {
 
 async function handleMediaItem(m, threadMediaDir) {
     if (m.type === 'photo') {
-        const url = m.media_url_https;
+        const url = getBulkDownloadUrl(m.media_url_https);
         const filename = path.basename(new URL(url).pathname);
         await downloadFile(url, path.join(threadMediaDir, filename));
     } else if (m.type === 'video' || m.type === 'animated_gif') {
