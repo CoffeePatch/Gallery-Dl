@@ -41,7 +41,7 @@ The script supports three execution routes mapping to CLI switches:
 
 1. **Default Mode (No Flags):** 
    - **Command:** `npm run scrape` or `.\Scripts\gallerydl_batch_scraper.ps1`
-   - **Behavior:** The script reads the user's SQLite database to see what tweets you have already extracted. When it encounters known tweets, it skips them. **Critically**, it will instantly abort making API requests to Twitter once it sees 5 consecutive known tweets. This saves rate limits.
+   - **Behavior:** The script reads the user's JSON data to see what tweets you have already extracted. When it encounters known tweets, it skips them. **Critically**, the Node.js merger (`json_merger.js`) will instantly abort the `gallery-dl` process once it sees 5 consecutive known tweets. This saves rate limits. (Note: this abort logic lives in the app layer, not via gallery-dl's native `--abort` flag).
    
 2. **Skip Mode (`-Skip`):**
    - **Command:** `npm run scrape:skip` or `.\Scripts\gallerydl_batch_scraper.ps1 -Skip`

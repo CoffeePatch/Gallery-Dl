@@ -140,20 +140,6 @@ foreach ($handle in $pendingHandles) {
         if (Test-Path $userArchiveFile) {
             Remove-Item -Path $userArchiveFile -Force | Out-Null
         }
-        $args += "--download-archive"
-        $args += $userArchiveFile
-    } elseif ($Mode -eq "skip") {
-        # Use archive database and stop quickly when hitting known tweets
-        $args += "--download-archive"
-        $args += $userArchiveFile
-        $args += "--abort"
-        $args += "5"
-    } else {
-        # Default mode: Use archive to skip known tweets, and abort to prevent API waste
-        $args += "--download-archive"
-        $args += $userArchiveFile
-        $args += "--abort"
-        $args += "5"
     }
 
     $args += $targetUrl
@@ -161,7 +147,7 @@ foreach ($handle in $pendingHandles) {
     # Execute Node JSON Merger which spawns gallery-dl as a child process
     $exitCode = 0
     try {
-        node $JsonMergerScript $jsonTargetFile $Mode $cleanUsername -- @args
+        node $JsonMergerScript $jsonTargetFile $Mode $cleanUsername $userArchiveFile -- @args
         $exitCode = $LASTEXITCODE
     } catch {
         if ($LASTEXITCODE -eq 105) {
@@ -252,7 +238,7 @@ foreach ($handle in $pendingHandles) {
                         
                         # Run the fallback command
                         try {
-                            node $JsonMergerScript $jsonTargetFile $Mode $cleanUsername "no-tripwire" -- @fallbackArgs
+                            node $JsonMergerScript $jsonTargetFile $Mode $cleanUsername $userArchiveFile "no-tripwire" "no-dupe-abort" -- @fallbackArgs
                             $exitCode = $LASTEXITCODE
                         } catch {
                             $exitCode = $LASTEXITCODE
@@ -280,7 +266,7 @@ foreach ($handle in $pendingHandles) {
         }
     }
 
-    if ($exitCode -eq 0 -or $exitCode -eq 100) {
+    if ($exitCode -eq 0 -or $exitCode -eq 100 -or $exitCode -eq 106) {
         # gallery-dl often exits with 0 on success, or sometimes specific codes for aborts
         Write-Host "[SUCCESS] Completed: $handleStr" -ForegroundColor Green
         

@@ -8,7 +8,12 @@ const { createStreamingParser } = require('./lib/streamingParser');
 
 const targetFile = process.argv[2];
 const mode = process.argv[3] || 'default';
-const targetUsername = process.argv[4] ? process.argv[4].toLowerCase() : '';
+const targetUsername = process.argv[4] && !process.argv[4].startsWith('--') ? process.argv[4].toLowerCase() : '';
+
+let archiveFile = '';
+if (process.argv[5] && !['no-tripwire', 'no-dupe-abort', '--'].includes(process.argv[5])) {
+    archiveFile = process.argv[5];
+}
 
 // Detect if we should spawn gallery-dl or read from stdin
 const dashDashIndex = process.argv.indexOf('--');
@@ -16,24 +21,69 @@ const isSpawning = dashDashIndex !== -1;
 
 // If we are spawning, the arguments after '--' are the gallery-dl arguments.
 let disableTripwire = false;
+let disableDupeAbort = false;
 let galleryDlArgs = [];
 
 if (isSpawning) {
     galleryDlArgs = process.argv.slice(dashDashIndex + 1);
-    // Search for 'no-tripwire' in args before '--'
+    // Search for 'no-tripwire' or 'no-dupe-abort' in args before '--'
     for (let i = 2; i < dashDashIndex; i++) {
         if (process.argv[i] === 'no-tripwire') {
             disableTripwire = true;
         }
+        if (process.argv[i] === 'no-dupe-abort') {
+            disableDupeAbort = true;
+        }
     }
 } else {
-    disableTripwire = process.argv[5] === 'no-tripwire';
+    disableTripwire = process.argv.includes('no-tripwire');
+    disableDupeAbort = process.argv.includes('no-dupe-abort');
 }
 
 if (!targetFile) {
     console.error("No target file specified.");
     process.exit(1);
 }
+
+function loadArchivedIds(dbFile) {
+    if (!fs.existsSync(dbFile)) return new Set();
+    try {
+        const { execFileSync } = require('child_process');
+        const out = execFileSync('python', [
+            path.join(__dirname, 'read_archive_ids.py'), dbFile
+        ], { encoding: 'utf8' });
+        return new Set(JSON.parse(out));
+    } catch (e) {
+        console.warn(`[MERGER] Could not read sqlite archive, falling back to RawData-only knownIds: ${e.message}`);
+        return new Set();
+    }
+}
+
+let knownIds = new Set();
+if (isSpawning && mode.toLowerCase() !== 'overwrite') {
+    if (archiveFile) {
+        const archivedIds = loadArchivedIds(archiveFile);
+        for (const id of archivedIds) {
+            knownIds.add(String(id));
+        }
+    }
+
+    if (fs.existsSync(targetFile)) {
+        try {
+            const existing = JSON.parse(fs.readFileSync(targetFile, 'utf8'));
+            for (const r of existing) {
+                if (Array.isArray(r) && r[0] === 2 && r[1] && r[1].tweet_id) {
+                    knownIds.add(String(r[1].tweet_id));
+                }
+            }
+        } catch (e) {
+            console.warn(`[MERGER] Could not preload RawData JSON IDs: ${e.message}`);
+        }
+    }
+}
+
+const ABORT_THRESHOLD = 5;
+let consecutiveKnown = 0;
 
 const newRecords = [];
 let tripwireFired = false;
@@ -45,6 +95,19 @@ function processRecord(record) {
     
     if (Array.isArray(record) && Number.isInteger(record[0])) {
         newRecords.push(record);
+        
+        if (!disableDupeAbort && record[0] === 2 && record[1] && record[1].tweet_id && knownIds.size > 0) {
+            if (knownIds.has(String(record[1].tweet_id))) {
+                consecutiveKnown++;
+                if (consecutiveKnown >= ABORT_THRESHOLD) {
+                    console.error(`[ABORT] ${ABORT_THRESHOLD} consecutive known tweets encountered. Stopping fetch — nothing new beyond this point.`);
+                    if (gdl) { try { gdl.kill(); } catch (e) {} }
+                    saveAndExit(106); // distinct code — success, not a tripwire/fallback trigger
+                }
+            } else {
+                consecutiveKnown = 0;
+            }
+        }
         
         // Tripwire Check: Detect if gallery-dl switched to Search fallback and is emitting replies to other users
         if (!disableTripwire && targetUsername && record[0] === 2 && record[1]) {
