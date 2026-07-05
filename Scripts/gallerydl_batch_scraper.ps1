@@ -116,6 +116,7 @@ foreach ($handle in $pendingHandles) {
     
     $args = @()
     $args += "--config-ignore"
+    $args += "--verbose"
     
     # We want JSON metadata without downloading media
     $args += "--resolve-json"

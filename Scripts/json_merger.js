@@ -89,6 +89,74 @@ const newRecords = [];
 let tripwireFired = false;
 let gdl = null;
 let parser = null;
+let graphqlRequestCount = 0;
+let lastCursorEncountered = null;
+
+function parseCursorFromGraphqlUrl(urlString) {
+    try {
+        const url = new URL(urlString);
+        const variablesRaw = url.searchParams.get('variables');
+        if (!variablesRaw) return null;
+        const variables = JSON.parse(variablesRaw);
+        if (Object.prototype.hasOwnProperty.call(variables, 'cursor')) {
+            return String(variables.cursor);
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function shortenCursor(cursorValue, visibleChars = 13) {
+    if (cursorValue === null || cursorValue === undefined) return '(initial/no cursor)';
+    const text = String(cursorValue);
+    if (text.length <= visibleChars) return text;
+    return `${text.slice(0, visibleChars)}...`;
+}
+
+function summarizeGraphqlRequest(urlString) {
+    try {
+        const url = new URL(urlString);
+        const match = url.pathname.match(/\/graphql\/([^/]+)\/([^/?]+)/);
+        const queryId = match ? match[1] : 'unknown';
+        const endpoint = match ? match[2] : 'unknown';
+        return `${endpoint} (queryId: ${queryId})`;
+    } catch (e) {
+        return 'unknown-endpoint';
+    }
+}
+
+function processGalleryDlLogLine(line) {
+    if (!line || typeof line !== 'string') return;
+
+    if (line.indexOf('/i/api/graphql/') === -1) return;
+
+    const urlMatch = line.match(/https?:\/\/\S+/);
+    if (!urlMatch) return;
+
+    const requestUrl = urlMatch[0];
+    const cursor = parseCursorFromGraphqlUrl(requestUrl);
+    const displayCursor = shortenCursor(cursor);
+    const requestLabel = summarizeGraphqlRequest(requestUrl);
+
+    graphqlRequestCount += 1;
+    if (cursor !== null) {
+        lastCursorEncountered = cursor;
+    }
+
+    console.log(`[GRAPHQL] Request ${graphqlRequestCount}: ${requestLabel}`);
+    console.log(`[PAGINATION] Page ${graphqlRequestCount} Cursor: ${displayCursor}`);
+}
+
+function printPaginationSummary() {
+    if (graphqlRequestCount === 0) {
+        console.log('[PAGINATION] No GraphQL request lines were detected in gallery-dl output.');
+        return;
+    }
+
+    const finalCursor = shortenCursor(lastCursorEncountered, 13);
+    console.log(`[PAGINATION] Final Cursor: ${finalCursor}`);
+}
 
 function processRecord(record) {
     if (tripwireFired) return;
@@ -135,6 +203,8 @@ function processRecord(record) {
 }
 
 function saveAndExit(exitCode) {
+    printPaginationSummary();
+
     if (newRecords.length === 0) {
         console.log(`[MERGER] No new JSON metadata found to process for ${targetFile}.`);
         process.exit(exitCode);
@@ -143,9 +213,23 @@ function saveAndExit(exitCode) {
     console.log(`[MERGER] Captured ${newRecords.length} new records from stream.`);
 
     if (mode.toLowerCase() === 'overwrite' || !fs.existsSync(targetFile)) {
+        let existingCount = 0;
+        if (fs.existsSync(targetFile)) {
+            try {
+                const rawExisting = fs.readFileSync(targetFile, 'utf8');
+                const parsed = rawExisting.trim() ? JSON.parse(rawExisting) : [];
+                if (Array.isArray(parsed)) {
+                    existingCount = parsed.length;
+                }
+            } catch (e) {
+                // Keep existingCount at 0 when old file is unreadable.
+            }
+        }
+
         // If overwrite mode, or file doesn't exist, just save the new records
         fs.writeFileSync(targetFile, JSON.stringify(newRecords, null, 2), 'utf8');
         console.log(`[MERGER] Created/Overwritten ${targetFile} with ${newRecords.length} records.`);
+        console.log(`[MERGER] Existing records before write: ${existingCount} | Newly captured: ${newRecords.length} | Final records: ${newRecords.length}`);
         process.exit(exitCode);
     } else {
         // Mode is skip or default: read existing file, prepend new records
@@ -162,6 +246,8 @@ function saveAndExit(exitCode) {
                 console.warn(`[MERGER] Existing file was not a JSON array. Resetting.`);
                 existingRecords = [];
             }
+
+            const existingCount = existingRecords.length;
  
             // Prepend new records and deduplicate
             const allRecords = newRecords.concat(existingRecords);
@@ -177,8 +263,10 @@ function saveAndExit(exitCode) {
             }
             
             const duplicatesRemoved = allRecords.length - combined.length;
+            const newlyAddedUnique = Math.max(0, combined.length - existingCount);
             fs.writeFileSync(targetFile, JSON.stringify(combined, null, 2), 'utf8');
             console.log(`[MERGER] Merged successfully! New total: ${combined.length} records. (Removed ${duplicatesRemoved} overlapping duplicates).`);
+            console.log(`[MERGER] Existing records: ${existingCount} | Newly captured: ${newRecords.length} | Newly added (unique): ${newlyAddedUnique} | Final records: ${combined.length}`);
             process.exit(exitCode);
         } catch (err) {
             console.error(`[MERGER] Failed to parse or write to existing file: ${err.message}`);
@@ -201,11 +289,18 @@ function setupLineReader(inputStream) {
 
 if (isSpawning) {
     const { spawn } = require('child_process');
-    gdl = spawn('gallery-dl', galleryDlArgs, { stdio: ['ignore', 'pipe', 'inherit'] });
+    gdl = spawn('gallery-dl', galleryDlArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
     
     const rl = setupLineReader(gdl.stdout);
+    const errRl = require('readline').createInterface({
+        input: gdl.stderr,
+        terminal: false
+    });
+
+    errRl.on('line', processGalleryDlLogLine);
     
     gdl.on('close', (code) => {
+        errRl.close();
         if (tripwireFired) return;
         if (code !== 0 && code !== null) {
             console.error(`[MERGER] gallery-dl exited with error code ${code}`);
