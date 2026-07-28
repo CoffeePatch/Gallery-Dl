@@ -5,10 +5,8 @@ A local automation pipeline built to systematically archive digital threads offl
 ## 📁 Directory Structure
 
 All directory paths and queue files are configured centrally in [paths.js](file:///c:/Users/hello/Pictures/Gallery-Dl/Scripts/lib/paths.js):
-- **`Scripts/thread_manager.js`**: The consolidated script driving the thread archiving automation. It supports X threads (GraphQL API or browser fallback) and ThreadReaderApp URLs.
-- **`Config/Users/threads.txt`**: Unified input queue file for X or ThreadReaderApp URLs.
-- **`Config/Users/urls_threadreader.txt`**: Input file specifically for ThreadReaderApp URLs (supports both `/user/` profiles and direct `/thread/` URLs).
-- **`Config/Users/urls_twitterthread.txt`**: Input file specifically for Twitter Thread URLs.
+- **`Scripts/thread_manager.js`**: The consolidated script driving the thread archiving automation. It routes URLs internally by type, so one queue file is enough.
+- **`Config/Users/threads.txt`**: Unified input queue file for all supported thread URLs.
 - **`Config/Queues/completed_threads.txt`**: Auto-generated tracking file for successfully processed URLs.
 - **`Config/Queues/failed_threads.txt`**: Auto-generated tracking file logging failed URLs for review.
 - **`Config/Settings/graphql_api_payload.json`**: Externalised GraphQL request payload config (`variables`, `features`, and `fieldToggles`).
@@ -18,7 +16,7 @@ All directory paths and queue files are configured centrally in [paths.js](file:
 
 ## ⚙️ How the Workflow Works (Step-by-Step Map)
 
-1. **Initialization:** The script reads `Config/Users/threads.txt`, `urls_threadreader.txt`, and `urls_twitterthread.txt`, and filters out any URLs already present in `Config/Queues/completed_threads.txt` to prevent duplicate processing.
+1. **Initialization:** The script reads `Config/Users/threads.txt` and filters out any URLs already present in `Config/Queues/completed_threads.txt` to prevent duplicate processing.
 2. **Profile Expansion:** If a ThreadReaderApp `/user/` profile URL is detected, the script navigates to the profile, scrolls to load all threads, extracts the individual thread URLs, and injects them into the processing queue.
 3. **API extraction (Twitter):** For X threads, it tries to fetch the conversation data using X's GraphQL API (authenticated via your cookie session, utilizing the query params defined in [graphql_api_payload.json](file:///c:/Users/hello/Pictures/Gallery-Dl/Config/Settings/graphql_api_payload.json)). If successful, it downloads all media files locally using [download.js](file:///c:/Users/hello/Pictures/Gallery-Dl/Scripts/lib/download.js) and constructs a self-contained offline HTML page.
 4. **Browser fallback (Twitter / ThreadReaderApp):** If the API limits are hit or for ThreadReaderApp, it spawns a headless browser, sets the viewport, performs paced scrolling to trigger lazy loading, and waits for CDN assets to finish fetching.
@@ -39,7 +37,7 @@ All directory paths and queue files are configured centrally in [paths.js](file:
 
 ## 🖥️ How to Run
 
-1. **Add URLs:** Open `Config/Users/threads.txt`, `urls_threadreader.txt`, or `urls_twitterthread.txt` and paste the URLs you wish to archive (one URL per line).
+1. **Add URLs:** Open `Config/Users/threads.txt` and paste the URLs you wish to archive (one URL per line).
 2. **Execute:** Run the automation script:
    ```bash
    npm run threads

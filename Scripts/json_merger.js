@@ -91,6 +91,7 @@ let gdl = null;
 let parser = null;
 let graphqlRequestCount = 0;
 let lastCursorEncountered = null;
+let consecutiveCursorCount = 0;
 
 function parseCursorFromGraphqlUrl(urlString) {
     try {
@@ -107,11 +108,12 @@ function parseCursorFromGraphqlUrl(urlString) {
     }
 }
 
-function shortenCursor(cursorValue, visibleChars = 13) {
+function shortenCursor(cursorValue) {
     if (cursorValue === null || cursorValue === undefined) return '(initial/no cursor)';
     const text = String(cursorValue);
-    if (text.length <= visibleChars) return text;
-    return `${text.slice(0, visibleChars)}...`;
+    if (text.length <= 25) return text;
+    const mid = Math.floor(text.length / 2);
+    return `${text.slice(0, 10)}...[${text.slice(mid - 3, mid + 3)}]...${text.slice(-10)}`;
 }
 
 function summarizeGraphqlRequest(urlString) {
@@ -129,19 +131,42 @@ function summarizeGraphqlRequest(urlString) {
 function processGalleryDlLogLine(line) {
     if (!line || typeof line !== 'string') return;
 
+    // Log important gallery-dl messages that might indicate why it "hung"
+    if (line.toLowerCase().includes('rate limit') || line.includes('429') || line.includes('WARNING') || line.includes('ERROR')) {
+        console.log(`[GALLERY-DL] ${line}`);
+    }
+
     if (line.indexOf('/i/api/graphql/') === -1) return;
 
-    const urlMatch = line.match(/https?:\/\/\S+/);
-    if (!urlMatch) return;
+    let requestUrl = '';
+    const urllib3Match = line.match(/(https?:\/\/[^\s"]+)\s+"[A-Z]+\s+([^"\s]+)/);
+    if (urllib3Match) {
+        requestUrl = urllib3Match[1] + urllib3Match[2];
+    } else {
+        const urlMatch = line.match(/https?:\/\/\S+/);
+        if (!urlMatch) return;
+        requestUrl = urlMatch[0];
+    }
 
-    const requestUrl = urlMatch[0];
     const cursor = parseCursorFromGraphqlUrl(requestUrl);
     const displayCursor = shortenCursor(cursor);
     const requestLabel = summarizeGraphqlRequest(requestUrl);
 
     graphqlRequestCount += 1;
     if (cursor !== null) {
-        lastCursorEncountered = cursor;
+        if (cursor === lastCursorEncountered) {
+            consecutiveCursorCount++;
+            if (consecutiveCursorCount >= 5) {
+                console.error(`[ABORT] Infinite loop detected: cursor ${displayCursor} repeated ${consecutiveCursorCount} times. Twitter API is likely returning the same page.`);
+                if (gdl) { try { gdl.kill(); } catch (e) {} }
+                saveAndExit(106);
+            }
+        } else {
+            consecutiveCursorCount = 1;
+            lastCursorEncountered = cursor;
+        }
+    } else {
+        consecutiveCursorCount = 0;
     }
 
     console.log(`[GRAPHQL] Request ${graphqlRequestCount}: ${requestLabel}`);

@@ -21,11 +21,11 @@ const {
     THREADS_MEDIA_DIR,
     COMPLETED_THREADS: COMPLETED_THREADS_TXT,
     FAILED_THREADS: FAILED_THREADS_TXT,
-    ARCHIVE_STATE_DB,
+    URLS_THREADREADER,
+    URLS_TWITTERTHREAD,
     COOKIES_FILE: COOKIES_PATH,
     GRAPHQL_PAYLOAD_CONFIG
 } = require('./lib/paths');
-const { ArchiveStateStore, inferArchiveSourceType } = require('./lib/archiveState');
 
 // Ensure required directories exist
 [THREADS_OUTPUT_DIR, THREADS_RAW_DIR, THREADS_MEDIA_DIR, path.dirname(COMPLETED_THREADS_TXT)].forEach(dir => {
@@ -52,39 +52,6 @@ function extractTweetId(url) {
     if (match) return match[1];
     if (/^\d+$/.test(url)) return url;
     return url.split('?')[0].replace(/\/+$/, '');
-}
-
-function createQueueItem(url, profileUrl = null) {
-    const threadId = extractTweetId(url);
-    return {
-        url,
-        threadId,
-        sourceType: inferArchiveSourceType(url),
-        profileUrl
-    };
-}
-
-function mergeQueueItem(existing, incoming) {
-    if (!existing.profileUrl && incoming.profileUrl) {
-        existing.profileUrl = incoming.profileUrl;
-    }
-    if (existing.sourceType === 'unknown' && incoming.sourceType !== 'unknown') {
-        existing.sourceType = incoming.sourceType;
-    }
-    return existing;
-}
-
-function dedupeQueueItems(items) {
-    const byThreadId = new Map();
-    for (const item of items) {
-        if (!item.threadId) continue;
-        if (byThreadId.has(item.threadId)) {
-            mergeQueueItem(byThreadId.get(item.threadId), item);
-        } else {
-            byThreadId.set(item.threadId, { ...item });
-        }
-    }
-    return [...byThreadId.values()];
 }
 
 // ============================================================
@@ -549,13 +516,13 @@ async function executeStrategyTwitterBrowser(browser, tweetId, url) {
         fs.writeFileSync(outputPath, htmlData, 'utf8');
         console.log(`[Browser Success] Saved thread HTML reader: ${outputPath}`);
         await page.close();
-        return outputPath;
+        return true;
     } catch (e) {
         console.error(`[Browser Error] Native X scrape failed: ${e.message}`);
         if (page) {
             try { await page.close(); } catch(err) {}
         }
-        return null;
+        return false;
     }
 }
 
@@ -611,20 +578,20 @@ async function executeStrategyThreadReader(browser, threadId, url) {
         fs.writeFileSync(outputPath, htmlData, 'utf8');
         console.log(`[ThreadReader Success] Saved HTML reader: ${outputPath}`);
         await page.close();
-        return outputPath;
+        return true;
     } catch (e) {
         console.error(`[ThreadReader Error] Scrape failed for ${url}: ${e.message}`);
         if (page) {
             try { await page.close(); } catch(err) {}
         }
-        return null;
+        return false;
     }
 }
 
 // ============================================================
 // EXPAND USER PROFILE MODE (From threadreader_archiver.js)
 // ============================================================
-async function expandUserProfile(browser, userUrl) {
+async function expandUserProfile(browser, userUrl, completedSet) {
     let page;
     try {
         page = await browser.newPage();
@@ -647,11 +614,11 @@ async function expandUserProfile(browser, userUrl) {
         });
 
         const threadUrls = threadHrefs.map(href => `https://threadreaderapp.com${href}`);
-        const uniqueItems = dedupeQueueItems(threadUrls.map(url => createQueueItem(url, userUrl)));
+        const uniqueUrls = [...new Set(threadUrls)].filter(u => !completedSet.has(u));
 
-        console.log(`[Profile Router Success] Found ${uniqueItems.length} threads from profile.`);
+        console.log(`[Profile Router Success] Found ${uniqueUrls.length} new threads from profile.`);
         await page.close();
-        return uniqueItems;
+        return uniqueUrls;
     } catch (e) {
         console.error(`[Profile Router Error] Failed to expand profile ${userUrl}: ${e.message}`);
         if (page) {
@@ -683,10 +650,6 @@ async function main() {
     }
     const cookieString = Object.entries(cookieObj).map(([k, v]) => `${k}=${v}`).join('; ');
     const { queryId, bearerToken } = await getApiCredentials(cookieString);
-    const archiveState = new ArchiveStateStore(ARCHIVE_STATE_DB);
-    archiveState.init();
-    archiveState.seedLegacyCompletedThreads(COMPLETED_THREADS_TXT);
-    archiveState.seedExistingArchiveFiles(THREADS_OUTPUT_DIR);
 
     // Read Queue Inputs
     let rawUrls = [];
@@ -697,12 +660,24 @@ async function main() {
         console.log(`[Input] Received direct URL argument: ${cliArg}`);
         rawUrls = [cliArg];
     } else {
-        rawUrls = await readLines(unifiedQueuePath);
+        const threadreaderUrls = await readLines(URLS_THREADREADER);
+        const twitterthreadUrls = await readLines(URLS_TWITTERTHREAD);
+        const unifiedUrls = await readLines(unifiedQueuePath);
+        rawUrls = [...threadreaderUrls, ...twitterthreadUrls, ...unifiedUrls];
     }
 
     if (rawUrls.length === 0) {
         console.log("No thread URLs found in queue files or CLI arguments.");
         process.exit(0);
+    }
+
+    // Filter completed
+    const completed = await readLines(COMPLETED_THREADS_TXT);
+    const completedSet = new Set(completed.map(u => extractTweetId(u)));
+
+    if (!cliArg) {
+        rawUrls = rawUrls.filter(u => !completedSet.has(extractTweetId(u)));
+        console.log(`Loaded ${rawUrls.length} remaining URLs from queues.`);
     }
 
     // Spin up headless browser
@@ -720,22 +695,15 @@ async function main() {
     let queue = [];
     for (const url of rawUrls) {
         if (url.includes('threadreaderapp.com/user/')) {
-            const discovered = await expandUserProfile(browser, url);
+            const discovered = await expandUserProfile(browser, url, completedSet);
             queue.push(...discovered);
         } else {
-            queue.push(createQueueItem(url));
+            queue.push(url);
         }
     }
 
-    // Deduplicate and skip already archived thread IDs.
-    queue = dedupeQueueItems(queue).filter(item => {
-        if (archiveState.isArchived(item.threadId)) {
-            console.log(`[State] Skipping archived thread ${item.threadId}`);
-            return false;
-        }
-        return true;
-    });
-
+    // Deduplicate queue
+    queue = [...new Set(queue)];
     console.log(`\nFinal processing queue: ${queue.length} threads.`);
 
     if (queue.length === 0) {
@@ -748,21 +716,15 @@ async function main() {
     let failCount = 0;
 
     for (let i = 0; i < queue.length; i++) {
-        const item = queue[i];
-        const { url, threadId, sourceType, profileUrl } = item;
+        const url = queue[i];
+        const threadId = extractTweetId(url);
         console.log(`\n[${i + 1}/${queue.length}] Processing thread: ${url}`);
 
         let success = false;
-        let outputPath = null;
-        let errorMessage = null;
 
         if (url.includes('threadreaderapp.com')) {
             // Strategy C: Scrape ThreadReader
-            outputPath = await executeStrategyThreadReader(browser, threadId, url);
-            success = Boolean(outputPath);
-            if (!success) {
-                errorMessage = 'ThreadReader scrape failed';
-            }
+            success = await executeStrategyThreadReader(browser, threadId, url);
         } else {
             // Twitter Thread
             // Try Strategy A (API)
@@ -770,49 +732,31 @@ async function main() {
             if (rawJsonPath) {
                 console.log(`[API Success] JSON fetched successfully.`);
                 // Trigger media download
-                await processThreadMedia(rawJsonPath);
+                // await processThreadMedia(rawJsonPath);
                 // Trigger HTML builder
                 generateOfflineHtmlTimeline(rawJsonPath);
-                outputPath = path.join(THREADS_OUTPUT_DIR, `${threadId}.html`);
                 success = true;
             } else {
                 console.log(`[API Failed/Rate-Limited] Falling back to browser scrape...`);
                 // Fallback to Strategy B (Browser Scrape)
-                outputPath = await executeStrategyTwitterBrowser(browser, threadId, url);
-                success = Boolean(outputPath);
-                if (!success) {
-                    errorMessage = 'API fetch and browser scrape failed';
-                }
+                success = await executeStrategyTwitterBrowser(browser, threadId, url);
             }
         }
 
         if (success) {
             successCount++;
-            archiveState.recordSuccess({
-                threadId,
-                sourceUrl: url,
-                sourceType,
-                profileUrl,
-                outputPath
-            });
             appendLine(COMPLETED_THREADS_TXT, url);
             
-            // Clean the unified input queue
-            if (fs.existsSync(unifiedQueuePath)) {
-                let lines = fs.readFileSync(unifiedQueuePath, 'utf8').split('\n');
-                lines = lines.filter(l => l.trim() !== url.trim());
-                fs.writeFileSync(unifiedQueuePath, lines.join('\n'));
-            }
+            // Clean queues from source files
+            [URLS_THREADREADER, URLS_TWITTERTHREAD, unifiedQueuePath].forEach(qFile => {
+                if (fs.existsSync(qFile)) {
+                    let lines = fs.readFileSync(qFile, 'utf8').split('\n');
+                    lines = lines.filter(l => l.trim() !== url.trim());
+                    fs.writeFileSync(qFile, lines.join('\n'));
+                }
+            });
         } else {
             failCount++;
-            archiveState.recordFailure({
-                threadId,
-                sourceUrl: url,
-                sourceType,
-                profileUrl,
-                errorMessage: errorMessage || 'Thread archiving failed',
-                outputPath
-            });
             appendLine(FAILED_THREADS_TXT, `${new Date().toISOString()} - ${url}`);
         }
 

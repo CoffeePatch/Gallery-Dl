@@ -151,40 +151,16 @@ async function runXCheckerScan() {
         return;
     }
 
-    // Initialize CSV and clean existing data
-    let completedHandles = new Set();
     const csvDir = path.dirname(X_CHECK_OUTPUT);
     if (!fs.existsSync(csvDir)) fs.mkdirSync(csvDir, { recursive: true });
 
     if (!fs.existsSync(X_CHECK_OUTPUT)) {
         fs.writeFileSync(X_CHECK_OUTPUT, 'Handle,Status,Post Count,Timestamp\n');
-    } else {
-        const existingCsv = fs.readFileSync(X_CHECK_OUTPUT, 'utf8').split('\n');
-        const header = existingCsv[0];
-        const rowMap = new Map();
-        
-        for (let i = 1; i < existingCsv.length; i++) {
-            const line = existingCsv[i].trim();
-            if (!line) continue;
-            const handle = line.split(',')[0];
-            rowMap.set(handle, line);
-        }
-
-        fs.writeFileSync(X_CHECK_OUTPUT, [header, ...Array.from(rowMap.values())].join('\n') + '\n');
-
-        for (const line of rowMap.values()) {
-            const handle = line.split(',')[0];
-            const status = line.split(',')[1];
-            if (status && !status.includes('Timeout/Network Error') && !status.includes('Error')) {
-                completedHandles.add(handle);
-            }
-        }
     }
 
     const lines = fs.readFileSync(USERS_FILE, 'utf8').split('\n');
     let handles = [...new Set(lines.map(parseHandle).filter(h => h))];
     const initialCount = handles.length;
-    handles = handles.filter(h => !completedHandles.has(h));
 
     console.log(`📦 Loaded ${initialCount} unique accounts from users.txt`);
     if (initialCount - handles.length > 0) {
@@ -213,14 +189,19 @@ async function runXCheckerScan() {
             const handle = batch[i];
             const result = await checkAccount(page, handle);
 
-            if (result.status === 'AUTH_WARNING' || result.status === 'RATE_LIMIT') {
-                batchCanceled = true;
-                break;
+            const statusForCsv = result.status;
+            const isTransientFailure = result.status === 'AUTH_WARNING' || result.status === 'RATE_LIMIT' || result.status === 'Timeout/Network Error' || result.status === 'Error';
+
+            if (isTransientFailure) {
+                if (result.status === 'AUTH_WARNING' || result.status === 'RATE_LIMIT') {
+                    batchCanceled = true;
+                    break;
+                }
             }
 
             console.log(`   -> [${result.status}]`);
             const timestamp = new Date().toISOString();
-            fs.appendFileSync(X_CHECK_OUTPUT, `${handle},"${result.status}","${result.postCount}","${timestamp}"\n`);
+            fs.appendFileSync(X_CHECK_OUTPUT, `${handle},"${statusForCsv}","${result.postCount}","${timestamp}"\n`);
 
             if (i < batch.length - 1) {
                 const delay = X_CHECKER_PACING_MIN_MS + Math.floor(Math.random() * (X_CHECKER_PACING_MAX_MS - X_CHECKER_PACING_MIN_MS));

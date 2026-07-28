@@ -6,8 +6,6 @@ param(
 $ScriptDir     = $PSScriptRoot
 $RootFolder    = Join-Path $ScriptDir ".."
 $UsersFile     = Join-Path $RootFolder "Config\Users\users.txt"
-$CompletedFile = Join-Path $RootFolder "Config\Queues\completed_handles.txt"
-$FailedFile    = Join-Path $RootFolder "Config\Queues\failed_handles.txt"
 $ConfigFile    = Join-Path $RootFolder "Config\Settings\config.json"
 $CookiesFile   = Join-Path $RootFolder "Config\Cookies\cookies.txt"
 
@@ -59,34 +57,38 @@ if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 }
 
-# Read completed state
-$completedHandles = @()
-if (Test-Path $CompletedFile) {
-    $completedHandles = Get-Content $CompletedFile | Where-Object { $_.Trim().Length -gt 0 }
-}
-$completedSet = New-Object System.Collections.Generic.HashSet[string]
-foreach ($c in $completedHandles) {
-    $completedSet.Add($c) | Out-Null
+$pendingHandles = @()
+$skippedCount = 0
+foreach ($handle in $handles) {
+    $handleStr = $handle.Trim()
+    if (-not $handleStr) { continue }
+
+    $cleanUsername = $handleStr -replace "^https?://(www\.)?(twitter|x)\.com/", ""
+    $cleanUsername = $cleanUsername -replace "\?.*$", ""
+    $cleanUsername = $cleanUsername -replace "/.*$", ""
+    $jsonTargetFile = Join-Path $OutputDir "${cleanUsername}_tweets.json"
+    $userArchiveFile = Join-Path $AccountStatusDir "${cleanUsername}_archive.sqlite3"
+
+    $hasArchive = (Test-Path $userArchiveFile) -and (Test-Path $jsonTargetFile)
+    if ($hasArchive -and $Mode -ne "overwrite") {
+        $skippedCount++
+    }
+
+    $pendingHandles += $handleStr
 }
 
 Write-Host "[INFO] Total handles loaded: $($handles.Count)"
-Write-Host "[INFO] Handles already completed: $($completedSet.Count)"
+Write-Host "[INFO] Existing archive JSON/DB pairs found: $skippedCount"
 
-$pendingHandles = $handles
 if ($Mode -ne "overwrite") {
-    $pendingHandles = $handles | Where-Object { -not $completedSet.Contains($_) }
     if ($pendingHandles.Count -eq 0) {
-        Write-Host "[INFO] All handles have already been processed!" -ForegroundColor Green
+        Write-Host "[INFO] No handles to process." -ForegroundColor Green
         exit 0
     }
     Write-Host "[INFO] Handles pending processing: $($pendingHandles.Count)`n" -ForegroundColor Yellow
 } else {
-    Write-Host "[INFO] Overwrite flag enabled. Ignoring completed list and forcing re-processing.`n" -ForegroundColor Yellow
-}
-
-# Ensure Failed file exists to avoid append errors
-if (-not (Test-Path $FailedFile)) {
-    New-Item -ItemType File -Force -Path $FailedFile | Out-Null
+    Write-Host "[INFO] Overwrite flag enabled. Re-processing accounts and rebuilding their archive data.`n" -ForegroundColor Yellow
+    $pendingHandles = $handles | Where-Object { $_.Trim().Length -gt 0 }
 }
 
 # ============================================================
@@ -276,16 +278,8 @@ foreach ($handle in $pendingHandles) {
         if (Test-Path $SyncScript) {
             python $SyncScript $jsonTargetFile $userArchiveFile
         }
-
-        # Add to completed list
-        if (-not $completedSet.Contains($handleStr)) {
-            Add-Content -Path $CompletedFile -Value $handleStr
-            $completedSet.Add($handleStr) | Out-Null
-        }
     } else {
         Write-Host "[ERROR] Failed/Aborted cleanly: $handleStr (Exit code: $exitCode)" -ForegroundColor Red
-        $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-        Add-Content -Path $FailedFile -Value "$timestamp - $handleStr - Exit Code: $exitCode"
     }
     
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray

@@ -15,7 +15,7 @@ All tools and scripts are located in the `Scripts/` directory, while settings, t
   - **Large Video Filter**: Filters large video records out of raw data (`npm run filter-large`).
   - **Thread Separator**: Moves threaded conversations to a separate raw directory (`npm run separate-threads`).
   - **Self-Retweets Cleaner**: Cleans self-retweets from timelines (`npm run clean-retweets`).
-- **`thread_manager.js`**: Orchestrates downloading/scraping X threads (via API or browser fallback) and ThreadReaderApp pages, saving them as self-contained HTML readers.
+- **`thread_manager.js`**: Orchestrates downloading/scraping X threads (via API or browser fallback) and ThreadReaderApp pages, saving them as self-contained HTML readers while tracking archive state in SQLite.
 - **`download_media.js`**: A custom concurrent media downloader that fetches photos and videos asynchronously with retries and mapping support.
 - **`generate_timeline.js`**: Reconstructs raw JSON data files into self-contained offline HTML timelines.
 

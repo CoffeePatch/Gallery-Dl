@@ -61,20 +61,25 @@ function processResult(result, threadId) {
         for (const m of mediaItems) {
             if (m.type === "photo") {
                 const filename = path.basename(new URL(m.media_url_https).pathname);
-                const imgSrc = getBase64Image(filename, m.media_url_https);
-                mediaHtml += `<div class="media-item"><img src="${imgSrc}" alt="Tweet Image"></div>`;
+                let b64Str = "";
+                const localPath = path.join(threadMediaDir, filename);
+                if (fs.existsSync(localPath)) {
+                    try {
+                        const ext = path.extname(filename).toLowerCase().substring(1) || 'jpeg';
+                        const b64 = fs.readFileSync(localPath, 'base64');
+                        b64Str = `data:image/${ext};base64,${b64}`;
+                    } catch(e) {}
+                }
+                const localRelPath = `../ThreadMedia/${threadId}/${filename}`;
+                mediaHtml += `<div class="media-item"><img src="${m.media_url_https}" data-base64="${b64Str}" data-local="${localRelPath}" onerror="onImgError(this)" alt="Tweet Image"></div>`;
             } else if (m.type === "video" || m.type === "animated_gif") {
                 const variants = m.video_info?.variants || [];
                 const mp4s = variants.filter(v => v.content_type === "video/mp4");
                 if (mp4s.length > 0) {
                     const bestMp4 = mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
                     const filename = path.basename(new URL(bestMp4.url).pathname);
-                    const localPath = path.join(threadMediaDir, filename);
-                    let vidSrc = bestMp4.url;
-                    if (fs.existsSync(localPath)) {
-                        vidSrc = `../ThreadMedia/${threadId}/${filename}`;
-                    }
-                    mediaHtml += `<div class="media-item"><video controls autoplay loop muted><source src="${vidSrc}" type="video/mp4"></video></div>`;
+                    const localRelPath = `../ThreadMedia/${threadId}/${filename}`;
+                    mediaHtml += `<div class="media-item"><video controls autoplay loop muted><source src="${bestMp4.url}" type="video/mp4"><source src="${localRelPath}" type="video/mp4"></video></div>`;
                 }
             }
         }

@@ -27,6 +27,7 @@ const INSTAGRAM_USERS = path.join(CONFIG_DIR, 'Users', 'instagram_users.txt');
 
 const COMPLETED_THREADS = path.join(CONFIG_DIR, 'Queues', 'completed_threads.txt');
 const FAILED_THREADS = path.join(CONFIG_DIR, 'Queues', 'failed_threads.txt');
+const ARCHIVE_STATE_DB = path.join(CONFIG_DIR, 'Queues', 'archive_state.sqlite3');
 
 const X_CHECK_OUTPUT = path.join(TWEET_DATA_DIR, 'AccountStatus', 'results.csv');
 
@@ -55,5 +56,6 @@ module.exports = {
     INSTAGRAM_USERS,
     COMPLETED_THREADS,
     FAILED_THREADS,
+    ARCHIVE_STATE_DB,
     X_CHECK_OUTPUT
 };
