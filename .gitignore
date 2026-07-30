@@ -19,3 +19,9 @@ __pycache__/
 
 # Queues and State Trackers
 /Config/Queues/
+
+# Scraping Output and Scratch Files
+/gallery-dl/
+*.tmp.json
+temp_*.json
+test_*.json
