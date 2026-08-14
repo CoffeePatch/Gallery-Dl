@@ -1,0 +1,219 @@
+body {
+    background-color: #000000;
+    color: #e7e9ea;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+}
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    border-left: 1px solid #2f3336;
+    border-right: 1px solid #2f3336;
+    min-height: 100vh;
+}
+.header {
+    padding: 16px;
+    border-bottom: 1px solid #2f3336;
+    position: sticky;
+    top: 0;
+    background-color: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(12px);
+    z-index: 10;
+}
+.header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+}
+.header p {
+    font-size: 13px;
+    color: #71767b;
+    margin: 0;
+}
+.tweet {
+    padding: 16px;
+    border-bottom: 1px solid #2f3336;
+    display: flex;
+    gap: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.tweet:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+.avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: #333;
+}
+.tweet-content {
+    flex: 1;
+    min-width: 0;
+}
+.tweet-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.name {
+    font-weight: 700;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #e7e9ea;
+    text-decoration: none;
+}
+.name:hover {
+    text-decoration: underline;
+}
+.handle {
+    color: #71767b;
+    font-size: 15px;
+}
+.date {
+    color: #71767b;
+    font-size: 15px;
+}
+.text {
+    font-size: 15px;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.media-grid {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #2f3336;
+    margin-top: 12px;
+}
+.media-grid-1 {
+    display: flex;
+}
+.media-grid-1 img, .media-grid-1 video {
+    width: 100%;
+    height: auto;
+    max-height: 600px;
+    object-fit: cover;
+}
+.media-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    height: 280px;
+}
+.media-grid-2 img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.media-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    height: 280px;
+}
+.media-grid-3 img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.media-grid-3 img:first-child {
+    grid-row: span 2;
+}
+.media-grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    height: 280px;
+}
+.media-grid-4 img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.video-container {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #2f3336;
+    margin-top: 12px;
+    display: flex;
+}
+.video-container video {
+    width: 100%;
+    max-height: 600px;
+    background-color: #000;
+}
+.stats {
+    display: flex;
+    justify-content: space-between;
+    max-width: 425px;
+    color: #71767b;
+    margin-top: 12px;
+    font-size: 13px;
+}
+.stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.stat svg {
+    fill: #71767b;
+    width: 1.25em;
+    height: 1.25em;
+}
+.repost-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #71767b;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    padding-left: 36px;
+}
+.repost-indicator svg {
+    fill: #71767b;
+    width: 16px;
+    height: 16px;
+}
+.timeline-navigation {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #2f3336;
+    border-top: 1px solid #2f3336;
+    background-color: #000000;
+}
+.nav-btn {
+    color: #1d9bf0;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid #2f3336;
+    transition: background-color 0.2s;
+}
+.nav-btn:hover:not(.disabled) {
+    background-color: rgba(29, 155, 240, 0.1);
+}
+.nav-btn.disabled {
+    color: #71767b;
+    border-color: #2f3336;
+    cursor: not-allowed;
+}
+.nav-page-num {
+    color: #e7e9ea;
+    font-weight: 700;
+    font-size: 14px;
+}

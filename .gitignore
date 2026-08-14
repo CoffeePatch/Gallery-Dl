@@ -25,3 +25,5 @@ __pycache__/
 *.tmp.json
 temp_*.json
 test_*.json
+Docs/
+*.md

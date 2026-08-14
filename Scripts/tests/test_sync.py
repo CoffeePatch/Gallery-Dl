@@ -2,12 +2,13 @@ import os
 import json
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import unittest
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.join(SCRIPT_DIR, '..', '..')
-SYNC_SCRIPT_PATH = os.path.join(ROOT_DIR, 'Scripts', 'sync_archive.py')
+SYNC_SCRIPT_PATH = os.path.join(ROOT_DIR, 'Scripts', 'DataUtilities', 'sync_archive.py')
 
 class TestSyncArchive(unittest.TestCase):
     def setUp(self):
@@ -52,7 +53,7 @@ class TestSyncArchive(unittest.TestCase):
 
     def test_sync_execution(self):
         # Run sync_archive.py
-        cmd = ["python", SYNC_SCRIPT_PATH, self.temp_json.name, self.temp_db.name]
+        cmd = [sys.executable, SYNC_SCRIPT_PATH, self.temp_json.name, self.temp_db.name]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         
         # Verify execution succeeded

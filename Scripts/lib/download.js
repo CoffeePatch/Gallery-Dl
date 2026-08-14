@@ -105,17 +105,34 @@ function getLosslessSnapshotUrl(mediaUrl) {
     return url;
 }
 
-function constructFilename(mediaUrl, tweetId = '', dateStr = '') {
-    let formattedDate = '';
-    if (dateStr) {
-        const firstPart = dateStr.split('T')[0].split(' ')[0];
-        formattedDate = firstPart.replace(/-/g, '_') + '_';
-    }
-    const prefix = tweetId ? `${formattedDate}${tweetId}_` : formattedDate;
-    const cleanUrl = mediaUrl.split('?')[0];
+function constructFilename(mediaUrl, tweetId = '', dateStr = '', accountName = '') {
+    const cleanUrl = (mediaUrl || '').split('?')[0];
     const ext = path.extname(cleanUrl) || '.jpg';
     const base = path.basename(cleanUrl, ext);
-    return `${prefix}${base}${ext}`;
+
+    let formattedDate = '';
+    if (dateStr) {
+        let clean = String(dateStr).split('+')[0].split('.')[0].trim();
+        clean = clean.replace('T', ' ');
+        const parts = clean.split(' ');
+        const datePart = (parts[0] || '').replace(/_/g, '-');
+        const timePart = parts[1] ? parts[1].replace(/:/g, '-') : '00-00-00';
+        formattedDate = `${datePart}_${timePart}`;
+    }
+
+    let formattedAccount = '';
+    if (accountName) {
+        const cleanAcc = String(accountName).replace(/_tweets$/i, '').replace(/^@/, '');
+        formattedAccount = `@${cleanAcc}`;
+    }
+
+    const parts = [];
+    if (formattedDate) parts.push(formattedDate);
+    if (formattedAccount) parts.push(formattedAccount);
+    if (tweetId) parts.push(tweetId);
+    parts.push(base);
+
+    return `${parts.join('_')}${ext}`;
 }
 
 module.exports = {

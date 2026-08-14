@@ -1,5 +1,18 @@
-// Rate limiting constants referenced by scraping limits documentation (twitter_scraping_limits.md)
+class RateLimitError extends Error {
+    constructor(message, resetTime = null) {
+        super(message);
+        this.name = 'RateLimitError';
+        this.resetTime = resetTime;
+    }
+}
+
 module.exports = {
+    RateLimitError,
+
+    // API rate-limit retry settings
+    API_MAX_RETRIES: 3,
+    API_BASE_RETRY_DELAY_MS: 5000,
+
     // delay between individual media downloads to respect rate-limiting
     MEDIA_DOWNLOAD_DELAY_MS: 500,
 

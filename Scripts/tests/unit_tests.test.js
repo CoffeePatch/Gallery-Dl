@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { parseRecord, getRecordKey } = require('../lib/recordSchema');
-const { parseHandle } = require('../lib/accountChecker');
+const { parseHandle } = require('../lib/handleUtils');
 const { createStreamingParser } = require('../lib/streamingParser');
 const { getBulkDownloadUrl, getLosslessSnapshotUrl, constructFilename } = require('../lib/download');
 
@@ -161,7 +161,7 @@ test('download - getLosslessSnapshotUrl', (t) => {
 test('download - constructFilename', (t) => {
     assert.strictEqual(
         constructFilename("https://pbs.twimg.com/media/xyz.jpg?name=orig", "123456", "2026-06-01 12:00:00"),
-        "2026_06_01_123456_xyz.jpg"
+        "2026-06-01_12-00-00_123456_xyz.jpg"
     );
     assert.strictEqual(
         constructFilename("https://example.com/vid.mp4", "987654", ""),
@@ -172,3 +172,40 @@ test('download - constructFilename', (t) => {
         "photo.png"
     );
 });
+
+const { preloadIdsFromArchiveStream, mergeStreamsToFile } = require('../lib/streamingMerger');
+
+test('streamingMerger - preload & mergeStreamsToFile', async (t) => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merger-test-'));
+    const existingFile = path.join(tmpDir, 'existing.json');
+    const newFile = path.join(tmpDir, 'new.json');
+    const outputFile = path.join(tmpDir, 'merged.json');
+
+    const existingRecords = [
+        [2, { tweet_id: "100", date: "2026-01-01" }],
+        [3, "https://pbs.twimg.com/media/m1.jpg", { tweet_id: "100" }]
+    ];
+    const newRecords = [
+        [2, { tweet_id: "101", date: "2026-01-02" }],
+        [2, { tweet_id: "100", date: "2026-01-01" }] // duplicate
+    ];
+
+    fs.writeFileSync(existingFile, JSON.stringify(existingRecords, null, 2), 'utf8');
+    fs.writeFileSync(newFile, JSON.stringify(newRecords, null, 2), 'utf8');
+
+    const knownSet = new Set();
+    await preloadIdsFromArchiveStream(existingFile, knownSet);
+    assert.strictEqual(knownSet.has("2_100"), true);
+
+    const stats = await mergeStreamsToFile(existingFile, newFile, outputFile, new Set());
+    assert.strictEqual(stats.totalCount, 3); // 101, 100(legacy), m1(media)
+    assert.strictEqual(stats.duplicatesRemoved, 1);
+
+    const outputContent = JSON.parse(fs.readFileSync(outputFile, 'utf8'));
+    assert.strictEqual(outputContent.length, 3);
+});
+

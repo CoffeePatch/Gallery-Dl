@@ -1,161 +1,124 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const { spawnSync } = require('child_process');
+const { DatabaseSync } = require('node:sqlite');
 
-const PYTHON_COMMAND = process.env.PYTHON || 'python';
+function inferArchiveSourceType(url = '') {
+    if (typeof url !== 'string') return 'unknown';
+    if (url.includes('threadreaderapp.com')) return 'threadreader';
+    if (url.includes('x.com') || url.includes('twitter.com')) return 'x_thread';
+    if (url.startsWith('local-file://')) return 'local_html_archive';
+    return 'unknown';
+}
 
-const SQLITE_HELPER_PY = String.raw`
-import json
-import os
-import sqlite3
-import sys
-from datetime import datetime, timezone
+function nowIso() {
+    return new Date().toISOString();
+}
 
-
-def now_iso():
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-
-
-def connect(db_path):
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA foreign_keys=ON')
-    return conn
-
-
-def ensure_schema(conn):
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS archive_state (
-            thread_id TEXT PRIMARY KEY,
-            source_url TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            profile_url TEXT,
-            status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'archived', 'failed')),
-            archived_at TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            retry_count INTEGER NOT NULL DEFAULT 0,
-            content_hash TEXT,
-            output_path TEXT,
-            error_message TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS archive_state_attempts (
-            attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            thread_id TEXT NOT NULL,
-            source_url TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            profile_url TEXT,
-            status TEXT NOT NULL,
-            archived_at TEXT,
-            created_at TEXT NOT NULL,
-            content_hash TEXT,
-            output_path TEXT,
-            error_message TEXT
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_archive_state_status ON archive_state(status);
-        CREATE INDEX IF NOT EXISTS idx_archive_state_profile_url ON archive_state(profile_url);
-        CREATE INDEX IF NOT EXISTS idx_archive_state_attempts_thread_created ON archive_state_attempts(thread_id, created_at DESC);
-        """
-    )
-
-
-def normalize_entry(entry):
+function normalizeEntry(entry) {
     return {
-        'thread_id': str(entry['thread_id']).strip(),
-        'source_url': str(entry['source_url']).strip(),
-        'source_type': str(entry['source_type']).strip() or 'unknown',
-        'profile_url': entry.get('profile_url') or None,
-        'content_hash': entry.get('content_hash') or None,
-        'output_path': entry.get('output_path') or None,
-        'error_message': entry.get('error_message') or None,
-        'status': entry.get('status') or 'archived',
-        'retry_count': int(entry.get('retry_count') or 0),
-        'created_at': entry.get('created_at') or now_iso(),
-        'updated_at': entry.get('updated_at') or now_iso(),
-        'archived_at': entry.get('archived_at'),
+        thread_id: String(entry.thread_id || entry.threadId || '').trim(),
+        source_url: String(entry.source_url || entry.sourceUrl || '').trim(),
+        source_type: String(entry.source_type || entry.sourceType || '').trim() || inferArchiveSourceType(entry.source_url || entry.sourceUrl),
+        profile_url: entry.profile_url || entry.profileUrl || null,
+        content_hash: entry.content_hash || entry.contentHash || null,
+        output_path: entry.output_path || entry.outputPath || null,
+        error_message: entry.error_message || entry.errorMessage || null,
+        status: entry.status || 'archived',
+        retry_count: Number(entry.retry_count || entry.retryCount || 0),
+        created_at: entry.created_at || entry.createdAt || nowIso(),
+        updated_at: entry.updated_at || entry.updatedAt || nowIso(),
+        archived_at: entry.archived_at || entry.archivedAt || null,
+    };
+}
+
+function normalizeAccountEntry(entry) {
+    const account_id = String(entry.accountId || entry.account_id || '').trim();
+    return {
+        account_id,
+        source_url: String(entry.sourceUrl || entry.source_url || '').trim(),
+        status: entry.status || 'checked',
+        last_error: entry.lastError || entry.last_error || entry.errorMessage || entry.error_message || null,
+        result_summary: entry.resultSummary || entry.result_summary || null,
+        output_path: entry.outputPath || entry.output_path || null,
+        retry_count: Number(entry.retryCount || entry.retry_count || 0),
+        created_at: entry.createdAt || entry.created_at || nowIso(),
+        updated_at: entry.updatedAt || entry.updated_at || nowIso(),
+    };
+}
+
+class ArchiveStateStore {
+    constructor(dbPath) {
+        this.dbPath = dbPath;
+        this._db = null;
     }
 
+    _getDb() {
+        if (!this._db) {
+            fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+            this._db = new DatabaseSync(this.dbPath);
+            this._db.exec('PRAGMA journal_mode=WAL;');
+            this._db.exec('PRAGMA foreign_keys=ON;');
+        }
+        return this._db;
+    }
 
-def upsert_archived(conn, entry):
-    entry = normalize_entry(entry)
-    conn.execute(
-        """
-        INSERT INTO archive_state (
-            thread_id, source_url, source_type, profile_url, status,
-            archived_at, created_at, updated_at, retry_count, content_hash, output_path, error_message
-        ) VALUES (?, ?, ?, ?, 'archived', ?, ?, ?, ?, ?, ?, NULL)
-        ON CONFLICT(thread_id) DO UPDATE SET
-            source_url = excluded.source_url,
-            source_type = excluded.source_type,
-            profile_url = excluded.profile_url,
-            status = 'archived',
-            archived_at = excluded.archived_at,
-            updated_at = excluded.updated_at,
-            retry_count = archive_state.retry_count,
-            content_hash = excluded.content_hash,
-            output_path = excluded.output_path,
-            error_message = NULL
-        """,
-        [
-            entry['thread_id'],
-            entry['source_url'],
-            entry['source_type'],
-            entry['profile_url'],
-            entry['archived_at'] or now_iso(),
-            entry['created_at'],
-            entry['updated_at'],
-            entry['retry_count'],
-            entry['content_hash'],
-            entry['output_path'],
-        ],
-    )
+    init() {
+        const db = this._getDb();
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS archive_state (
+                thread_id TEXT PRIMARY KEY,
+                source_url TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                profile_url TEXT,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'archived', 'failed')),
+                archived_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                content_hash TEXT,
+                output_path TEXT,
+                error_message TEXT
+            );
 
+            CREATE TABLE IF NOT EXISTS archive_state_attempts (
+                attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                profile_url TEXT,
+                status TEXT NOT NULL,
+                archived_at TEXT,
+                created_at TEXT NOT NULL,
+                content_hash TEXT,
+                output_path TEXT,
+                error_message TEXT
+            );
 
-def insert_attempt(conn, entry):
-    entry = normalize_entry(entry)
-    conn.execute(
-        """
-        INSERT INTO archive_state_attempts (
-            thread_id, source_url, source_type, profile_url, status,
-            archived_at, created_at, content_hash, output_path, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            entry['thread_id'],
-            entry['source_url'],
-            entry['source_type'],
-            entry['profile_url'],
-            entry['status'],
-            entry['archived_at'],
-            entry['created_at'],
-            entry['content_hash'],
-            entry['output_path'],
-            entry['error_message'],
-        ],
-    )
+            CREATE INDEX IF NOT EXISTS idx_archive_state_status ON archive_state(status);
+            CREATE INDEX IF NOT EXISTS idx_archive_state_profile_url ON archive_state(profile_url);
+            CREATE INDEX IF NOT EXISTS idx_archive_state_attempts_thread_created ON archive_state_attempts(thread_id, created_at DESC);
 
+            CREATE TABLE IF NOT EXISTS account_state (
+                account_id TEXT PRIMARY KEY,
+                source_url TEXT,
+                status TEXT NOT NULL CHECK (status IN ('checked', 'processing', 'failed')),
+                last_error TEXT,
+                result_summary TEXT,
+                output_path TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_account_state_status ON account_state(status);
+        `);
+    }
 
-def record_success(conn, entry):
-    entry = normalize_entry(entry)
-    archived_at = entry['archived_at'] or now_iso()
-    timestamp = entry['updated_at']
-    with conn:
-        insert_attempt(conn, {
-            **entry,
-            'status': 'archived',
-            'archived_at': archived_at,
-            'created_at': timestamp,
-            'updated_at': timestamp,
-            'error_message': None,
-        })
-        conn.execute(
-            """
+    _upsertArchived(entry) {
+        const db = this._getDb();
+        const norm = normalizeEntry(entry);
+        const archivedAt = norm.archived_at || nowIso();
+
+        const stmt = db.prepare(`
             INSERT INTO archive_state (
                 thread_id, source_url, source_type, profile_url, status,
                 archived_at, created_at, updated_at, retry_count, content_hash, output_path, error_message
@@ -171,247 +134,44 @@ def record_success(conn, entry):
                 content_hash = excluded.content_hash,
                 output_path = excluded.output_path,
                 error_message = NULL
-            """,
-            [
-                entry['thread_id'],
-                entry['source_url'],
-                entry['source_type'],
-                entry['profile_url'],
-                archived_at,
-                timestamp,
-                timestamp,
-                entry['retry_count'],
-                entry['content_hash'],
-                entry['output_path'],
-            ],
-        )
+        `);
 
+        stmt.run(
+            norm.thread_id,
+            norm.source_url,
+            norm.source_type,
+            norm.profile_url,
+            archivedAt,
+            norm.created_at,
+            norm.updated_at,
+            norm.retry_count,
+            norm.content_hash,
+            norm.output_path
+        );
+    }
 
-def record_failure(conn, entry):
-    entry = normalize_entry(entry)
-    timestamp = entry['updated_at']
-    with conn:
-        insert_attempt(conn, {
-            **entry,
-            'status': 'failed',
-            'created_at': timestamp,
-            'updated_at': timestamp,
-        })
-        conn.execute(
-            """
-            INSERT INTO archive_state (
+    _insertAttempt(entry) {
+        const db = this._getDb();
+        const norm = normalizeEntry(entry);
+        const stmt = db.prepare(`
+            INSERT INTO archive_state_attempts (
                 thread_id, source_url, source_type, profile_url, status,
-                archived_at, created_at, updated_at, retry_count, content_hash, output_path, error_message
-            ) VALUES (?, ?, ?, ?, 'failed', ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(thread_id) DO UPDATE SET
-                source_url = excluded.source_url,
-                source_type = excluded.source_type,
-                profile_url = excluded.profile_url,
-                status = 'failed',
-                archived_at = COALESCE(archive_state.archived_at, excluded.archived_at),
-                updated_at = excluded.updated_at,
-                retry_count = archive_state.retry_count + 1,
-                content_hash = COALESCE(excluded.content_hash, archive_state.content_hash),
-                output_path = COALESCE(excluded.output_path, archive_state.output_path),
-                error_message = excluded.error_message
-            """,
-            [
-                entry['thread_id'],
-                entry['source_url'],
-                entry['source_type'],
-                entry['profile_url'],
-                entry['archived_at'],
-                timestamp,
-                timestamp,
-                1,
-                entry['content_hash'],
-                entry['output_path'],
-                entry['error_message'],
-            ],
-        )
+                archived_at, created_at, content_hash, output_path, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
 
-
-def seed_completed(conn, entries):
-    count = 0
-    with conn:
-        for entry in entries:
-            upsert_archived(conn, {
-                'thread_id': entry['thread_id'],
-                'source_url': entry['source_url'],
-                'source_type': entry['source_type'],
-                'profile_url': entry.get('profile_url'),
-                'content_hash': entry.get('content_hash'),
-                'output_path': entry.get('output_path'),
-                'created_at': entry.get('created_at'),
-                'updated_at': entry.get('updated_at'),
-                'archived_at': entry.get('archived_at') or now_iso(),
-                'retry_count': entry.get('retry_count') or 0,
-            })
-            count += 1
-    return count
-
-
-def seed_archived_files(conn, entries):
-    count = 0
-    with conn:
-        for entry in entries:
-            upsert_archived(conn, {
-                'thread_id': entry['thread_id'],
-                'source_url': entry['source_url'],
-                'source_type': entry['source_type'],
-                'profile_url': entry.get('profile_url'),
-                'content_hash': entry.get('content_hash'),
-                'output_path': entry.get('output_path'),
-                'created_at': entry.get('created_at'),
-                'updated_at': entry.get('updated_at'),
-                'archived_at': entry.get('archived_at') or now_iso(),
-                'retry_count': entry.get('retry_count') or 0,
-            })
-            count += 1
-    return count
-
-
-def is_archived(conn, thread_id):
-    row = conn.execute(
-        "SELECT status FROM archive_state WHERE thread_id = ?",
-        [thread_id],
-    ).fetchone()
-    return bool(row and row['status'] == 'archived')
-
-
-def main():
-    if len(sys.argv) < 3:
-        raise SystemExit('Usage: archiveState helper <command> <dbPath> [payloadJson]')
-
-    command = sys.argv[1]
-    db_path = sys.argv[2]
-    payload = {}
-    if len(sys.argv) > 3 and sys.argv[3]:
-        payload_arg = sys.argv[3]
-        if os.path.exists(payload_arg):
-            with open(payload_arg, 'r', encoding='utf-8') as handle:
-                payload = json.load(handle)
-        else:
-            payload = json.loads(payload_arg)
-
-    conn = connect(db_path)
-    try:
-        ensure_schema(conn)
-
-        if command == 'init':
-            print(json.dumps({'ok': True}))
-        elif command == 'seed_completed':
-            entries = payload.get('entries', [])
-            count = seed_completed(conn, entries)
-            print(json.dumps({'seeded': count}))
-        elif command == 'seed_archived_files':
-            entries = payload.get('entries', [])
-            count = seed_archived_files(conn, entries)
-            print(json.dumps({'seeded': count}))
-        elif command == 'is_archived':
-            print(json.dumps({'archived': is_archived(conn, payload['thread_id'])}))
-        elif command == 'record_success':
-            record_success(conn, payload)
-            print(json.dumps({'ok': True}))
-        elif command == 'record_failure':
-            record_failure(conn, payload)
-            print(json.dumps({'ok': True}))
-        else:
-            raise SystemExit(f'Unknown archive state command: {command}')
-    finally:
-        conn.close()
-
-
-if __name__ == '__main__':
-    main()
-`;
-
-function inferArchiveSourceType(url) {
-    const lowerUrl = String(url || '').toLowerCase();
-    if (lowerUrl.includes('threadreaderapp.com/user/')) return 'threadreader_profile';
-    if (lowerUrl.includes('threadreaderapp.com/thread/')) return 'threadreader_thread';
-    if (lowerUrl.includes('x.com/') || lowerUrl.includes('twitter.com/')) return 'x_thread';
-    return 'unknown';
-}
-
-function normalizeEntry(entry) {
-    return {
-        thread_id: String(entry.thread_id || '').trim(),
-        source_url: String(entry.source_url || '').trim(),
-        source_type: String(entry.source_type || inferArchiveSourceType(entry.source_url) || 'unknown').trim() || 'unknown',
-        profile_url: entry.profile_url || null,
-        content_hash: entry.content_hash || null,
-        output_path: entry.output_path || null,
-        error_message: entry.error_message || null,
-        status: entry.status || 'archived',
-        retry_count: Number.isFinite(entry.retry_count) ? entry.retry_count : parseInt(entry.retry_count || '0', 10) || 0,
-        created_at: entry.created_at || new Date().toISOString(),
-        updated_at: entry.updated_at || new Date().toISOString(),
-        archived_at: entry.archived_at || null
-    };
-}
-
-function normalizeAccountEntry(entry) {
-    return {
-        accountId: String(entry.accountId || entry.account_id || entry.handle || '').trim(),
-        sourceUrl: String(entry.sourceUrl || entry.source_url || '').trim(),
-        status: entry.status || 'checked',
-        createdAt: entry.createdAt || entry.created_at || new Date().toISOString(),
-        updatedAt: entry.updatedAt || entry.updated_at || new Date().toISOString(),
-        lastError: entry.lastError || entry.last_error || null,
-        resultSummary: entry.resultSummary || entry.result_summary || null,
-        outputPath: entry.outputPath || entry.output_path || null,
-        retryCount: Number.isFinite(entry.retryCount) ? entry.retryCount : parseInt(entry.retryCount || entry.retry_count || '0', 10) || 0,
-    };
-}
-
-function runSqliteCommand(dbPath, command, payload = {}) {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gallery-dl-archive-state-'));
-    const payloadPath = path.join(tempDir, 'payload.json');
-    fs.writeFileSync(payloadPath, JSON.stringify(payload), 'utf8');
-
-    const result = spawnSync(PYTHON_COMMAND, ['-c', SQLITE_HELPER_PY, command, dbPath, payloadPath], {
-        encoding: 'utf8'
-    });
-
-    try {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch (e) {}
-
-    if (result.error) {
-        throw result.error;
-    }
-
-    if (result.status !== 0) {
-        const stderr = (result.stderr || '').trim();
-        const stdout = (result.stdout || '').trim();
-        throw new Error(stderr || stdout || `SQLite helper failed with exit code ${result.status}`);
-    }
-
-    const output = (result.stdout || '').trim();
-    return output ? JSON.parse(output) : null;
-}
-
-function seedEntriesInChunks(dbPath, command, entries, chunkSize = 50) {
-    if (!Array.isArray(entries) || entries.length === 0) return 0;
-
-    let totalSeeded = 0;
-    for (let index = 0; index < entries.length; index += chunkSize) {
-        const chunk = entries.slice(index, index + chunkSize);
-        const result = runSqliteCommand(dbPath, command, { entries: chunk });
-        totalSeeded += result?.seeded || 0;
-    }
-
-    return totalSeeded;
-}
-
-class ArchiveStateStore {
-    constructor(dbPath) {
-        this.dbPath = dbPath;
-    }
-
-    init() {
-        runSqliteCommand(this.dbPath, 'init');
+        stmt.run(
+            norm.thread_id,
+            norm.source_url,
+            norm.source_type,
+            norm.profile_url,
+            norm.status,
+            norm.archived_at,
+            norm.created_at,
+            norm.content_hash,
+            norm.output_path,
+            norm.error_message
+        );
     }
 
     seedLegacyCompletedThreads(filePath) {
@@ -424,18 +184,23 @@ class ArchiveStateStore {
 
         if (urls.length === 0) return 0;
 
-        const entries = urls.map(url => ({
-            thread_id: url.match(/\/(\d+)(?:\.html)?$/)?.[1] || url.split('?')[0].replace(/\/+$/, ''),
-            source_url: url,
-            source_type: inferArchiveSourceType(url),
-            profile_url: null,
-            archived_at: new Date().toISOString(),
-            retry_count: 0
-        })).filter(entry => entry.thread_id && entry.source_url);
+        let count = 0;
+        for (const url of urls) {
+            const threadId = url.match(/\/(\d+)(?:\.html)?$/)?.[1] || url.split('?')[0].replace(/\/+$/, '');
+            if (!threadId || !url) continue;
 
-        if (entries.length === 0) return 0;
+            this._upsertArchived({
+                thread_id: threadId,
+                source_url: url,
+                source_type: inferArchiveSourceType(url),
+                profile_url: null,
+                archived_at: nowIso(),
+                retry_count: 0
+            });
+            count++;
+        }
 
-        return seedEntriesInChunks(this.dbPath, 'seed_completed', entries);
+        return count;
     }
 
     seedExistingArchiveFiles(threadsRootDir) {
@@ -474,15 +239,21 @@ class ArchiveStateStore {
             }
         }
 
-        if (entries.length === 0) return 0;
+        let count = 0;
+        for (const entry of entries) {
+            this._upsertArchived(entry);
+            count++;
+        }
 
-        return seedEntriesInChunks(this.dbPath, 'seed_archived_files', entries);
+        return count;
     }
 
     isArchived(threadId) {
         if (!threadId) return false;
-        const result = runSqliteCommand(this.dbPath, 'is_archived', { thread_id: String(threadId).trim() });
-        return Boolean(result?.archived);
+        const db = this._getDb();
+        const stmt = db.prepare("SELECT status FROM archive_state WHERE thread_id = ?");
+        const row = stmt.get(String(threadId).trim());
+        return Boolean(row && row.status === 'archived');
     }
 
     recordSuccess({ threadId, sourceUrl, sourceType, profileUrl = null, outputPath = null, contentHash = null }) {
@@ -490,7 +261,7 @@ class ArchiveStateStore {
             throw new Error('recordSuccess requires threadId and sourceUrl');
         }
 
-        runSqliteCommand(this.dbPath, 'record_success', normalizeEntry({
+        const entry = normalizeEntry({
             thread_id: threadId,
             source_url: sourceUrl,
             source_type: sourceType || inferArchiveSourceType(sourceUrl),
@@ -498,8 +269,11 @@ class ArchiveStateStore {
             output_path: outputPath,
             content_hash: contentHash,
             status: 'archived',
-            archived_at: new Date().toISOString()
-        }));
+            archived_at: nowIso()
+        });
+
+        this._upsertArchived(entry);
+        this._insertAttempt(entry);
     }
 
     recordFailure({ threadId, sourceUrl, sourceType, profileUrl = null, errorMessage = null, outputPath = null, contentHash = null }) {
@@ -507,7 +281,8 @@ class ArchiveStateStore {
             throw new Error('recordFailure requires threadId and sourceUrl');
         }
 
-        runSqliteCommand(this.dbPath, 'record_failure', normalizeEntry({
+        const db = this._getDb();
+        const norm = normalizeEntry({
             thread_id: threadId,
             source_url: sourceUrl,
             source_type: sourceType || inferArchiveSourceType(sourceUrl),
@@ -516,9 +291,133 @@ class ArchiveStateStore {
             content_hash: contentHash,
             error_message: errorMessage || 'Thread archiving failed',
             status: 'failed'
-        }));
+        });
+
+        const stmt = db.prepare(`
+            INSERT INTO archive_state (
+                thread_id, source_url, source_type, profile_url, status,
+                archived_at, created_at, updated_at, retry_count, content_hash, output_path, error_message
+            ) VALUES (?, ?, ?, ?, 'failed', NULL, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT(thread_id) DO UPDATE SET
+                source_url = excluded.source_url,
+                source_type = excluded.source_type,
+                profile_url = excluded.profile_url,
+                status = 'failed',
+                updated_at = excluded.updated_at,
+                retry_count = archive_state.retry_count + 1,
+                content_hash = excluded.content_hash,
+                output_path = excluded.output_path,
+                error_message = excluded.error_message
+        `);
+
+        stmt.run(
+            norm.thread_id,
+            norm.source_url,
+            norm.source_type,
+            norm.profile_url,
+            norm.created_at,
+            norm.updated_at,
+            norm.content_hash,
+            norm.output_path,
+            norm.error_message
+        );
+
+        this._insertAttempt(norm);
     }
 
+    shouldProcessAccount(accountId) {
+        if (!accountId) return true;
+        const db = this._getDb();
+        const stmt = db.prepare("SELECT status FROM account_state WHERE account_id = ?");
+        const row = stmt.get(String(accountId).trim());
+        if (!row) return true;
+        return row.status !== 'processing';
+    }
+
+    recordAccountProcessing({ accountId, sourceUrl = null, resultSummary = null, outputPath = null }) {
+        if (!accountId) throw new Error('recordAccountProcessing requires accountId');
+        const db = this._getDb();
+        const norm = normalizeAccountEntry({ accountId, sourceUrl, resultSummary, outputPath, status: 'processing' });
+
+        const stmt = db.prepare(`
+            INSERT INTO account_state (
+                account_id, source_url, status, last_error, result_summary, output_path, retry_count, created_at, updated_at
+            ) VALUES (?, ?, 'processing', NULL, ?, ?, 0, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+                source_url = CASE WHEN excluded.source_url != '' THEN excluded.source_url ELSE account_state.source_url END,
+                status = 'processing',
+                result_summary = COALESCE(excluded.result_summary, account_state.result_summary),
+                output_path = COALESCE(excluded.output_path, account_state.output_path),
+                updated_at = excluded.updated_at
+        `);
+
+        stmt.run(
+            norm.account_id,
+            norm.source_url,
+            norm.result_summary,
+            norm.output_path,
+            norm.created_at,
+            norm.updated_at
+        );
+    }
+
+    recordAccountCheck({ accountId, sourceUrl = null, resultSummary = null, outputPath = null }) {
+        if (!accountId) throw new Error('recordAccountCheck requires accountId');
+        const db = this._getDb();
+        const norm = normalizeAccountEntry({ accountId, sourceUrl, resultSummary, outputPath, status: 'checked' });
+
+        const stmt = db.prepare(`
+            INSERT INTO account_state (
+                account_id, source_url, status, last_error, result_summary, output_path, retry_count, created_at, updated_at
+            ) VALUES (?, ?, 'checked', NULL, ?, ?, 0, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+                source_url = CASE WHEN excluded.source_url != '' THEN excluded.source_url ELSE account_state.source_url END,
+                status = 'checked',
+                last_error = NULL,
+                result_summary = COALESCE(excluded.result_summary, account_state.result_summary),
+                output_path = COALESCE(excluded.output_path, account_state.output_path),
+                updated_at = excluded.updated_at
+        `);
+
+        stmt.run(
+            norm.account_id,
+            norm.source_url,
+            norm.result_summary,
+            norm.output_path,
+            norm.created_at,
+            norm.updated_at
+        );
+    }
+
+    recordAccountFailure({ accountId, sourceUrl = null, errorMessage = null, resultSummary = null, outputPath = null }) {
+        if (!accountId) throw new Error('recordAccountFailure requires accountId');
+        const db = this._getDb();
+        const norm = normalizeAccountEntry({ accountId, sourceUrl, lastError: errorMessage, resultSummary, outputPath, status: 'failed' });
+
+        const stmt = db.prepare(`
+            INSERT INTO account_state (
+                account_id, source_url, status, last_error, result_summary, output_path, retry_count, created_at, updated_at
+            ) VALUES (?, ?, 'failed', ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+                source_url = CASE WHEN excluded.source_url != '' THEN excluded.source_url ELSE account_state.source_url END,
+                status = 'failed',
+                last_error = excluded.last_error,
+                result_summary = COALESCE(excluded.result_summary, account_state.result_summary),
+                output_path = COALESCE(excluded.output_path, account_state.output_path),
+                retry_count = account_state.retry_count + 1,
+                updated_at = excluded.updated_at
+        `);
+
+        stmt.run(
+            norm.account_id,
+            norm.source_url,
+            norm.last_error,
+            norm.result_summary,
+            norm.output_path,
+            norm.created_at,
+            norm.updated_at
+        );
+    }
 }
 
 module.exports = {

@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Tweet Template Studio - Bulk Processing Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #090A0F;
+            --panel-bg: rgba(22, 24, 33, 0.75);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --accent-blue: #1D9BF0;
+            --accent-blue-hover: #1a8cd8;
+            --text-main: #F7F9F9;
+            --text-muted: #71767B;
+            --input-bg: #16181C;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(29, 155, 240, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 85% 85%, rgba(120, 86, 255, 0.08) 0%, transparent 40%);
+        }
+
+        header {
+            padding: 20px 32px;
+            border-bottom: 1px solid var(--panel-border);
+            backdrop-filter: blur(12px);
+            background: rgba(9, 10, 15, 0.8);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #1D9BF0, #0055B3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(29, 155, 240, 0.3);
+        }
+
+        .brand-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: #ffffff;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #FFFFFF 0%, #A0AAB5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge-tag {
+            background: rgba(29, 155, 240, 0.15);
+            color: #1D9BF0;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid rgba(29, 155, 240, 0.3);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            background: var(--input-bg);
+            color: var(--text-main);
+            border: 1px solid var(--panel-border);
+            padding: 10px 18px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(29, 155, 240, 0.35);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-blue-hover);
+            border-color: var(--accent-blue-hover);
+        }
+
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 440px 1fr;
+            gap: 24px;
+            padding: 24px 32px;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-lg);
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-body {
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="text"], select, textarea {
+            background: var(--input-bg);
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus, select:focus, textarea:focus {
+            border-color: var(--accent-blue);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .tab-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--input-bg);
+            color: var(--text-main);
+        }
+
+        .preview-canvas-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            background: radial-gradient(circle at center, rgba(29, 155, 240, 0.05) 0%, rgba(0, 0, 0, 0.4) 100%);
+            min-height: 520px;
+            position: relative;
+        }
+
+        .svg-wrapper {
+            max-width: 600px;
+            width: 100%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+            border-radius: 16px;
+        }
+
+        .code-container {
+            background: #0d0e14;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            color: #d4d4d4;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 480px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </div>
+            <div class="brand-title">SVG Tweet Template Studio</div>
+            <span class="badge-tag">Bulk Processing Engine</span>
+        </div>
+        <div class="header-actions">
+            <button class="btn" onclick="copySvgCode()">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                Copy SVG Code
+            </button>
+            <button class="btn btn-primary" onclick="downloadSvg()">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                Export SVG
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <!-- LEFT CONTROL PANEL -->
+        <section class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Template Parameters</span>
+                <div class="tab-bar">
+                    <button class="tab-btn active" onclick="switchTab('editor')">Fields</button>
+                    <button class="tab-btn" onclick="switchTab('code')">SVG Code</button>
+                </div>
+            </div>
+
+            <div id="tab-editor" class="panel-body">
+                <!-- PRESET TWEET SELECTOR -->
+                <div class="form-group">
+                    <label style="color: #1D9BF0;">⚡ Select Real Tweet Dataset Preset</label>
+                    <select id="preset-selector" onchange="loadPreset(this.value)">
+                        <option value="mr_one">Template 1: Mr. One (Default Master)</option>
+                        <option value="realmomincest_1">Real Data 1: @realmomincest (Text Tweet)</option>
+                        <option value="realmomincest_2">Real Data 2: @realmomincest (Media Photo Attachment)</option>
+                        <option value="atl_1">Real Data 3: @3sumqueenatl (High Engagement / Retweets)</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <input type="text" id="input-name" value="Mr. One" oninput="updateSvg()">
+                    </div>
+                    <div class="form-group">
+                        <label>Handle</label>
+                        <input type="text" id="input-handle" value="@mr_one" oninput="updateSvg()">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Avatar URL</label>
+                    <input type="text" id="input-avatar" value="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80" oninput="updateSvg()">
+                </div>
+
+                <div class="form-group">
+                    <label>Tweet Text Body</label>
+                    <textarea id="input-text" oninput="updateSvg()">Here is the master SVG card template for bulk processing tweets! 🎨⚡️
+Fully responsive text wrapping, sharp modern typography, and vector action metrics.</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Media Attachment URL (Optional)</label>
+                    <input type="text" id="input-media" value="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80" oninput="updateSvg()">
+                </div>
+
+                <div class="form-group">
+                    <label>Timestamp & Date</label>
+                    <input type="text" id="input-date" value="11:11 AM · Aug 11, 2026" oninput="updateSvg()">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Replies</label>
+                        <input type="text" id="input-replies" value="142" oninput="updateSvg()">
+                    </div>
+                    <div class="form-group">
+                        <label>Reposts</label>
+                        <input type="text" id="input-reposts" value="859" oninput="updateSvg()">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Likes</label>
+                        <input type="text" id="input-likes" value="12.4K" oninput="updateSvg()">
+                    </div>
+                    <div class="form-group">
+                        <label>Views</label>
+                        <input type="text" id="input-views" value="452K" oninput="updateSvg()">
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-code" class="panel-body hidden">
+                <div class="code-container" id="code-output"></div>
+            </div>
+        </section>
+
+        <!-- RIGHT PREVIEW CANVAS PANEL -->
+        <section class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Vector Preview Output</span>
+                <span style="font-size: 13px; color: var(--text-muted);">100% Scalable Vector</span>
+            </div>
+            <div class="preview-canvas-container">
+                <div id="svg-container" class="svg-wrapper"></div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const PRESETS = {
+            mr_one: {
+                name: "Mr. One",
+                handle: "@mr_one",
+                avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+                text: "Here is the master SVG card template for bulk processing tweets! 🎨⚡️\nFully responsive text wrapping, sharp modern typography, and vector action metrics.",
+                media: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80",
+                date: "11:11 AM · Aug 11, 2026",
+                replies: "142",
+                reposts: "859",
+                likes: "12.4K",
+                views: "452K"
+            },
+            realmomincest_1: {
+                name: "incest son cuckold",
+                handle: "@realmomincest",
+                avatar: "https://pbs.twimg.com/profile_images/2058755107362365440/SOYUAg9g.jpg",
+                text: "meri maa aur muslim uncle Eid ke awsar par suhagrat mana rhe hai",
+                media: "",
+                date: "4:13 PM · May 27, 2026",
+                replies: "0",
+                reposts: "0",
+                likes: "6",
+                views: "1.3K"
+            },
+            realmomincest_2: {
+                name: "incest son cuckold",
+                handle: "@realmomincest",
+                avatar: "https://pbs.twimg.com/profile_images/2058755107362365440/SOYUAg9g.jpg",
+                text: "meri maa aur muslim uncle Eid ke awsar par suhagrat mana rhe hai",
+                media: "https://pbs.twimg.com/media/HJVqZ7mWMAIFPCZ?format=jpg&name=orig",
+                date: "4:13 PM · May 27, 2026",
+                replies: "0",
+                reposts: "0",
+                likes: "6",
+                views: "1.3K"
+            },
+            atl_1: {
+                name: "🩷 atlanta girl 🩷",
+                handle: "@3sumqueenatl",
+                avatar: "https://pbs.twimg.com/profile_images/1980630665533005824/oV3T57Ke.jpg",
+                text: "RT @3sumqueenatl: Right where I want to be.. rubbing my clit while he cums deep in another girls pussy for me",
+                media: "",
+                date: "2:54 AM · Apr 15, 2026",
+                replies: "2",
+                reposts: "51",
+                likes: "557",
+                views: "27.6K"
+            }
+        };
+
+        const SVG_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 480" width="600" height="480" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+    <clipPath id="avatar-clip">
+      <circle cx="48" cy="48" r="24" />
+    </clipPath>
+    <clipPath id="media-clip">
+      <rect x="24" y="186" width="552" height="200" rx="14" ry="14" />
+    </clipPath>
+    <linearGradient id="verified-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1D9BF0"/>
+      <stop offset="100%" stop-color="#0077E6"/>
+    </linearGradient>
+    <linearGradient id="card-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0F1419"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .card-bg { fill: url(#card-bg); stroke: #2F3336; stroke-width: 1.5; }
+    .author-name { font-size: 16px; font-weight: 700; fill: #F7F9F9; }
+    .author-handle { font-size: 14px; font-weight: 400; fill: #71767B; }
+    .meta-text { font-size: 14px; font-weight: 400; fill: #71767B; }
+    .stat-count { font-size: 13px; font-weight: 600; fill: #71767B; }
+    .action-icon { fill: #71767B; }
+  </style>
+
+  <rect x="2" y="2" width="596" height="476" rx="16" ry="16" class="card-bg" filter="url(#card-shadow)" />
+
+  <!-- HEADER -->
+  <circle cx="48" cy="48" r="24" fill="#26292D" />
+  <image href="{{AVATAR_URL}}" x="24" y="24" width="48" height="48" clip-path="url(#avatar-clip)" preserveAspectRatio="xMidYMid slice" />
+  <circle cx="48" cy="48" r="23.5" fill="none" stroke="#2F3336" stroke-width="1" />
+
+  <text x="84" y="42" class="author-name">{{DISPLAY_NAME}}</text>
+
+  <g transform="translate({{VERIFIED_X}}, 27)">
+    <path d="M22.25 12c0-1.43-.88-2.67-2.19-3.19.46-1.39.02-2.93-1.09-3.83-1.1-1.1-2.64-1.55-4.03-1.09C14.42 2.58 13.18 1.7 11.75 1.7s-2.67.88-3.19 2.19c-1.39-.46-2.93-.02-3.83 1.09-1.1 1.1-1.55 2.64-1.09 4.03C2.38 9.53 1.5 10.77 1.5 12.2s.88 2.67 2.19 3.19c-.46 1.39-.02 2.93 1.09 3.83 1.1 1.1 2.64 1.55 4.03 1.09 1.04 1.31 2.28 2.19 3.71 2.19s2.67-.88 3.19-2.19c1.39.46 2.93.02 3.83-1.09 1.1-1.1 1.55-2.64 1.09-4.03 1.31-.52 2.19-1.76 2.19-3.19zm-12.71 4.29l-3.88-3.88 1.41-1.41 2.47 2.47 6.06-6.06 1.41 1.41-7.47 7.47z" fill="url(#verified-grad)" transform="scale(0.7)"/>
+  </g>
+
+  <text x="84" y="62" class="author-handle">{{HANDLE}}</text>
+
+  <g transform="translate(548, 28)">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" fill="#71767B"/>
+  </g>
+
+  <!-- BODY -->
+  <foreignObject x="24" y="88" width="552" height="90">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; color: #E7E9EA; line-height: 1.45; word-wrap: break-word; white-space: pre-wrap; margin: 0;">
+      {{TWEET_TEXT}}
+    </div>
+  </foreignObject>
+
+  <!-- MEDIA -->
+  {{MEDIA_SECTION}}
+
+  <!-- META -->
+  <text x="24" y="412" class="meta-text">{{DATE}} · <tspan fill="#1D9BF0">Twitter for Web</tspan></text>
+  <line x1="24" y1="428" x2="576" y2="428" stroke="#2F3336" stroke-width="1"/>
+
+  <!-- ACTIONS -->
+  <g transform="translate(24, 442)">
+    <g transform="translate(0, 0)">
+      <path class="action-icon" d="M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z" transform="scale(0.8)"/>
+      <text x="24" y="14" class="stat-count">{{REPLIES}}</text>
+    </g>
+    <g transform="translate(130, 0)">
+      <path class="action-icon" d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z" transform="scale(0.8)"/>
+      <text x="24" y="14" class="stat-count">{{REPOSTS}}</text>
+    </g>
+    <g transform="translate(260, 0)">
+      <path class="action-icon" d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.41-4.86-.514-6.67.887-1.79 2.647-2.91 4.601-3.01 1.651-.09 3.368.56 4.798 2.01 1.429-1.45 3.146-2.1 4.796-2.01 1.954.1 3.714 1.22 4.601 3.01.896 1.81.846 4.17-.514 6.67z" transform="scale(0.8)"/>
+      <text x="24" y="14" class="stat-count">{{LIKES}}</text>
+    </g>
+    <g transform="translate(390, 0)">
+      <path class="action-icon" d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z" transform="scale(0.8)"/>
+      <text x="24" y="14" class="stat-count">{{VIEWS}}</text>
+    </g>
+    <g transform="translate(520, 0)">
+      <path class="action-icon" d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.29 3.3-1.42-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" transform="scale(0.8)"/>
+    </g>
+  </g>
+</svg>`;
+
+        function escapeXml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function loadPreset(key) {
+            const p = PRESETS[key];
+            if (!p) return;
+            document.getElementById('input-name').value = p.name;
+            document.getElementById('input-handle').value = p.handle;
+            document.getElementById('input-avatar').value = p.avatar;
+            document.getElementById('input-text').value = p.text;
+            document.getElementById('input-media').value = p.media;
+            document.getElementById('input-date').value = p.date;
+            document.getElementById('input-replies').value = p.replies;
+            document.getElementById('input-reposts').value = p.reposts;
+            document.getElementById('input-likes').value = p.likes;
+            document.getElementById('input-views').value = p.views;
+            updateSvg();
+        }
+
+        function updateSvg() {
+            const name = document.getElementById('input-name').value;
+            const handle = document.getElementById('input-handle').value;
+            const avatar = document.getElementById('input-avatar').value;
+            const text = document.getElementById('input-text').value;
+            const media = document.getElementById('input-media').value;
+            const date = document.getElementById('input-date').value;
+            const replies = document.getElementById('input-replies').value;
+            const reposts = document.getElementById('input-reposts').value;
+            const likes = document.getElementById('input-likes').value;
+            const views = document.getElementById('input-views').value;
+
+            const approxWidth = Math.min(name.length * 9.5, 380);
+            const verifiedX = 88 + Math.round(approxWidth);
+
+            const mediaSection = media ? `<g id="media-card">
+    <rect x="24" y="186" width="552" height="200" rx="14" ry="14" fill="#16181C" stroke="#2F3336" stroke-width="1"/>
+    <image href="${escapeXml(media)}" x="24" y="186" width="552" height="200" clip-path="url(#media-clip)" preserveAspectRatio="xMidYMid slice"/>
+  </g>` : '<!-- No Media -->';
+
+            const outputSvg = SVG_TEMPLATE
+                .replace(/\{\{DISPLAY_NAME\}\}/g, escapeXml(name))
+                .replace(/\{\{HANDLE\}\}/g, escapeXml(handle))
+                .replace(/\{\{AVATAR_URL\}\}/g, escapeXml(avatar))
+                .replace(/\{\{TWEET_TEXT\}\}/g, escapeXml(text))
+                .replace(/\{\{MEDIA_SECTION\}\}/g, mediaSection)
+                .replace(/\{\{DATE\}\}/g, escapeXml(date))
+                .replace(/\{\{VERIFIED_X\}\}/g, verifiedX)
+                .replace(/\{\{REPLIES\}\}/g, escapeXml(replies))
+                .replace(/\{\{REPOSTS\}\}/g, escapeXml(reposts))
+                .replace(/\{\{LIKES\}\}/g, escapeXml(likes))
+                .replace(/\{\{VIEWS\}\}/g, escapeXml(views));
+
+            document.getElementById('svg-container').innerHTML = outputSvg;
+            document.getElementById('code-output').textContent = outputSvg;
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            if (tab === 'editor') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                document.getElementById('tab-editor').classList.remove('hidden');
+                document.getElementById('tab-code').classList.add('hidden');
+            } else {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('tab-editor').classList.add('hidden');
+                document.getElementById('tab-code').classList.remove('hidden');
+            }
+        }
+
+        function copySvgCode() {
+            const code = document.getElementById('code-output').textContent;
+            navigator.clipboard.writeText(code);
+            alert('SVG code copied to clipboard!');
+        }
+
+        function downloadSvg() {
+            const code = document.getElementById('code-output').textContent;
+            const blob = new Blob([code], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tweet_template.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        window.onload = updateSvg;
+    </script>
+</body>
+</html>
